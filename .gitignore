@@ -1,0 +1,8 @@
+# Зависимости инструментов проверки
+node_modules/
+package-lock.json
+
+# Служебные файлы
+.DS_Store
+Thumbs.db
+*.log

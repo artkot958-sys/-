@@ -1,0 +1,3340 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<Meta name="ExplicitAutoJoints">true</Meta>
+	<External>null</External>
+	<External>nil</External>
+	<Item class="ReplicatedStorage" referent="RBX2">
+		<Properties>
+			<string name="Name">ReplicatedStorage</string>
+		</Properties>
+	<Item class="ModuleScript" referent="RBX1">
+		<Properties>
+			<string name="Name">EggGameConfig</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameConfig — все числа баланса игры в одном месте.
+	Хочешь игру быстрее/медленнее, дороже/дешевле — меняй только этот файл.
+
+	Место в Studio: ReplicatedStorage -> ModuleScript с именем "EggGameConfig"
+]]
+
+local Config = {}
+
+-- ===================== ЯЙЦА =====================
+
+-- Сколько яиц одновременно лежит на рынке в центре карты
+Config.MaxGroundEggs = 40
+
+-- Как часто (в секундах) рынок пополняется новым яйцом
+Config.SpawnInterval = 0.85
+
+-- Сколько секунд яйца в рюкзаке нельзя украсть сразу после подбора
+-- (чтобы вор не отбирал только что собранное)
+Config.StealLockTime = 2.5
+
+-- Размер и расположение стопки яиц над головой
+Config.StackBaseHeight = 3.4   -- на сколько выше головы начинается стопка
+Config.StackHeight = 1.85      -- расстояние между рядами
+Config.StackBackOffset = 1.2   -- сдвиг назад от центра персонажа
+Config.StackSpread = 1.55      -- расстояние между яйцами в ряду
+Config.StackColumns = 3        -- яиц в ряду
+Config.MaxVisibleStack = 15    -- больше не рисуем (остальные невидимы)
+
+-- Во сколько раз уменьшаем яйцо в стопке и на складе
+Config.CarriedEggScale = 0.7
+Config.VaultEggScale = 0.55
+
+-- Типы яиц: Weight — шанс выпадения, Value — цена и «сила» дохода
+Config.EggTypes = {
+	Common = {
+		DisplayName = "Обычное",
+		Weight = 70,
+		Value = 1,
+		Color = Color3.fromRGB(255, 245, 220),
+		Size = Vector3.new(2.1, 2.1, 2.1),
+		Rarity = Color3.fromRGB(235, 235, 235),
+	},
+	Rare = {
+		DisplayName = "Редкое",
+		Weight = 20,
+		Value = 5,
+		Color = Color3.fromRGB(110, 190, 255),
+		Size = Vector3.new(2.2, 2.2, 2.2),
+		Rarity = Color3.fromRGB(90, 170, 255),
+	},
+	Epic = {
+		DisplayName = "Эпическое",
+		Weight = 8,
+		Value = 20,
+		Color = Color3.fromRGB(185, 115, 255),
+		Size = Vector3.new(2.35, 2.35, 2.35),
+		Rarity = Color3.fromRGB(170, 90, 255),
+	},
+	Legendary = {
+		DisplayName = "Легендарное",
+		Weight = 2,
+		Value = 100,
+		Color = Color3.fromRGB(255, 190, 40),
+		Size = Vector3.new(2.6, 2.6, 2.6),
+		Rarity = Color3.fromRGB(255, 170, 30),
+	},
+}
+
+-- ===================== КАРТА =====================
+
+Config.ArenaSize = 340
+Config.MarketRadius = 34
+Config.BasesCount = 16
+Config.BaseRingRadius = 116
+Config.BaseZoneRadius = 14
+
+-- ===================== ПОДБОР / КРАЖА =====================
+
+-- Базовый радиус подбора яйца
+Config.PickupRadius = 7
+
+
+-- Пауза между кражами у одного игрока
+Config.StealCooldown = 1.5
+
+-- Сколько секунд держать кнопку, чтобы обокрасть другого игрока
+Config.PlayerStealHoldTime = 0.9
+
+-- Сколько секунд держать кнопку, чтобы обокрасть базу
+Config.RaidHoldTime = 1.4
+
+-- Урон/отбрасывание вора? нет — просто отбираем яйца
+
+-- ===================== ЭКОНОМИКА =====================
+
+-- Доход одного яйца в секунду = Value * IncomeRate
+Config.IncomeRate = 0.14
+
+-- Сколько секунд уходит на «занос» одного яйца в склад
+Config.DepositTime = 0.22
+
+-- Начальный капитал
+Config.StartingCoins = 0
+
+
+-- Начальная вместимость склада (без улучшений)
+Config.VaultCapacityBase = 20
+
+-- Вместимость склада при общем владении делится? нет — общая на базу
+
+-- ===================== УЛУЧШЕНИЯ =====================
+
+Config.Upgrades = {
+	Backpack = {
+		DisplayName = "Рюкзак",
+		Description = "Больше яиц помещается за спиной",
+		Icon = "🎒",
+		BaseCost = 25,
+		CostGrowth = 1.55,
+		MaxLevel = 10,
+		BaseValue = 3,
+		PerLevel = 2,
+		Unit = "яиц",
+	},
+	Speed = {
+		DisplayName = "Скорость",
+		Description = "Быстрее бегаешь — сложнее догнать",
+		Icon = "⚡",
+		BaseCost = 40,
+		CostGrowth = 1.7,
+		MaxLevel = 8,
+		BaseValue = 16,
+		PerLevel = 1.3,
+		Unit = "",
+	},
+	Magnet = {
+		DisplayName = "Магнит",
+		Description = "Яйца подбираются с большего расстояния",
+		Icon = "🧲",
+		BaseCost = 60,
+		CostGrowth = 1.8,
+		MaxLevel = 6,
+		BaseValue = 0,
+		PerLevel = 1.7,
+		Unit = "",
+	},
+	Steal = {
+		DisplayName = "Ловкость",
+		Description = "За одну кражу уносишь больше яиц",
+		Icon = "🥷",
+		BaseCost = 90,
+		CostGrowth = 1.9,
+		MaxLevel = 5,
+		BaseValue = 1,
+		PerLevel = 1,
+		Unit = "яиц",
+	},
+	Vault = {
+		DisplayName = "Склад",
+		Description = "На базе помещается больше яиц",
+		Icon = "🏦",
+		BaseCost = 100,
+		CostGrowth = 1.85,
+		MaxLevel = 8,
+		BaseValue = 20,
+		PerLevel = 15,
+		Unit = "яиц",
+	},
+	Income = {
+		DisplayName = "Доход",
+		Description = "Каждое яйцо на складе приносит больше",
+		Icon = "💎",
+		BaseCost = 120,
+		CostGrowth = 1.95,
+		MaxLevel = 8,
+		BaseValue = 1,
+		PerLevel = 0.2,
+		Unit = "x",
+	},
+}
+
+-- ===================== ПРОЧЕЕ =====================
+
+Config.SaveFolder = "EggGamePlayerData"
+Config.DataVersion = 1
+Config.AutosaveInterval = 90
+
+Config.Colors = {
+	Floor = Color3.fromRGB(58, 66, 82),
+	Wall = Color3.fromRGB(38, 44, 56),
+	Market = Color3.fromRGB(255, 170, 60),
+	MyBase = Color3.fromRGB(70, 230, 140),
+	FreeBase = Color3.fromRGB(150, 160, 175),
+	Vault = Color3.fromRGB(255, 205, 90),
+	Text = Color3.fromRGB(255, 255, 255),
+}
+
+return Config
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	</Item>
+	<Item class="ServerScriptService" referent="RBX8">
+		<Properties>
+			<string name="Name">ServerScriptService</string>
+		</Properties>
+	<Item class="Script" referent="RBX7">
+		<Properties>
+			<string name="Name">EggGameMain</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameMain — точка входа сервера.
+
+	Место в Studio: ServerScriptService -> Script с именем "EggGameMain"
+	ВАЖНО: это обычный Script (с иконкой «пьедестала»), а не LocalScript.
+
+	Порядок работы:
+	  1. Строит карту (EggGameMap)
+	  2. Создаёт RemoteEvent'ы для клиента
+	  3. Подключает игроков: данные, база, магазин
+	  4. Запускает игровые циклы (EggGameCore)
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
+local Map = require(script.Parent:WaitForChild("EggGameMap"))
+local Data = require(script.Parent:WaitForChild("EggGameData"))
+local Core = require(script.Parent:WaitForChild("EggGameCore"))
+
+-- ============================================================
+-- 1. КАРТА
+-- ============================================================
+
+local mapData = Map.build()
+
+-- ============================================================
+-- 2. REMOTES
+-- ============================================================
+
+local remotesFolder = ReplicatedStorage:FindFirstChild("EggGameRemotes")
+if not remotesFolder then
+	remotesFolder = Instance.new("Folder")
+	remotesFolder.Name = "EggGameRemotes"
+	remotesFolder.Parent = ReplicatedStorage
+end
+
+local function ensureRemote(className, name)
+	local existing = remotesFolder:FindFirstChild(name)
+	if existing then
+		return existing
+	end
+	local remote = Instance.new(className)
+	remote.Name = name
+	remote.Parent = remotesFolder
+	return remote
+end
+
+local remotes = {
+	Notify = ensureRemote("RemoteEvent", "Notify"),
+	CoinsUpdate = ensureRemote("RemoteEvent", "CoinsUpdate"),
+	ShopUpdate = ensureRemote("RemoteEvent", "ShopUpdate"),
+	CarriedUpdate = ensureRemote("RemoteEvent", "CarriedUpdate"),
+	BaseInfo = ensureRemote("RemoteEvent", "BaseInfo"),
+	BuyUpgrade = ensureRemote("RemoteFunction", "BuyUpgrade"),
+	GetShop = ensureRemote("RemoteFunction", "GetShop"),
+}
+
+-- ============================================================
+-- 3. ИГРОВАЯ ЛОГИКА
+-- ============================================================
+
+Core.init(mapData, remotes)
+
+-- ============================================================
+-- 4. МАГАЗИН
+-- ============================================================
+
+local function buildShopPayload(player)
+	local entries = {}
+
+	for upgradeName, upgradeConfig in pairs(Config.Upgrades) do
+		table.insert(entries, {
+			Name = upgradeName,
+			DisplayName = upgradeConfig.DisplayName,
+			Description = upgradeConfig.Description,
+			Icon = upgradeConfig.Icon,
+			Level = Data.getLevel(player, upgradeName),
+			MaxLevel = upgradeConfig.MaxLevel,
+			Cost = Data.getUpgradeCost(player, upgradeName),
+			Value = Data.getUpgradeValue(player, upgradeName),
+			Unit = upgradeConfig.Unit,
+		})
+	end
+
+	table.sort(entries, function(a, b)
+		local aCost = a.Cost or math.huge
+		local bCost = b.Cost or math.huge
+		if aCost == bCost then
+			return a.DisplayName < b.DisplayName
+		end
+		return aCost < bCost
+	end)
+
+	return {
+		Coins = Data.getCoins(player),
+		Upgrades = entries,
+	}
+end
+
+-- Обновление магазина на клиенте
+
+local function syncShop(player)
+	local remote = remotes.ShopUpdate
+	if not remote or not player.Parent then
+		return
+	end
+	if not Data.isLoaded(player) then
+		return
+	end
+	remote:FireClient(player, buildShopPayload(player).Upgrades, Data.getCoins(player))
+end
+
+remotes.GetShop.OnServerInvoke = function(player)
+	if not Data.isLoaded(player) then
+		return nil
+	end
+	return buildShopPayload(player)
+end
+
+remotes.BuyUpgrade.OnServerInvoke = function(player, upgradeName)
+	if type(upgradeName) ~= "string" then
+		return false, "Неверный запрос"
+	end
+
+	if not Data.isLoaded(player) then
+		return false, "Данные ещё грузятся"
+	end
+
+	local success, message = Data.purchaseUpgrade(player, upgradeName)
+
+	if success then
+		Core.syncCoins(player)
+		Core.syncCarried(player)
+		Core.syncBaseInfo(player)
+		syncShop(player)
+	else
+		Core.notify(player, message, Color3.fromRGB(255, 140, 120))
+	end
+
+	return success, message
+end
+
+-- ============================================================
+-- 5. ИГРОКИ
+-- ============================================================
+
+local function setupPlayer(player)
+	Data.load(player)
+
+	-- База
+	Core.assignBase(player)
+
+	-- Персонаж
+	local function onCharacter(character)
+		Core.onCharacterAdded(player, character)
+	end
+
+	if player.Character then
+		task.spawn(onCharacter, player.Character)
+	end
+	player.CharacterAdded:Connect(onCharacter)
+
+	-- Отправляем стартовое состояние на клиент
+	task.delay(0.6, function()
+		if not player.Parent then
+			return
+		end
+		Core.syncCoins(player)
+		Core.syncCarried(player)
+		Core.syncBaseInfo(player)
+		syncShop(player)
+		Core.notify(player, "Собирай яйца на рынке и неси на свою базу! 🥚", Color3.fromRGB(150, 230, 255))
+	end)
+
+	-- Периодическое обновление интерфейса
+	task.spawn(function()
+		while player.Parent do
+			task.wait(1)
+			if Data.isLoaded(player) then
+				Core.syncCoins(player)
+				Core.syncBaseInfo(player)
+			end
+		end
+	end)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(setupPlayer, player)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	Core.cleanupPlayer(player)
+	Data.release(player)
+end)
+
+-- Сохраняем всё при закрытии сервера
+game:BindToClose(function()
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(function()
+			Data.save(player, true)
+		end)
+	end
+	task.wait(2)
+end)
+
+Data.startAutosave()
+
+-- ============================================================
+-- 6. ОТЧЁТ В OUTPUT
+-- ============================================================
+
+print("================================================")
+print("[EggGame] Сервер запущен")
+print(string.format("[EggGame] Баз: %d | Яиц на рынке: %d", #mapData.BasesData, Config.MaxGroundEggs))
+print("[EggGame] Сохранение: " .. (Data.isStoreAvailable() and "ВКЛЮЧЕНО" or "ВЫКЛЮЧЕНО (Studio -> Enable Studio Access to API Services)"))
+print("================================================")
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	<Item class="Folder" referent="RBX6">
+		<Properties>
+			<string name="Name">EggGame</string>
+		</Properties>
+	<Item class="ModuleScript" referent="RBX3">
+		<Properties>
+			<string name="Name">EggGameMap</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameMap — строит всю карту кодом. Руками ничего расставлять не нужно.
+
+	Место в Studio: ServerScriptService -> ModuleScript "EggGameMap"
+
+	Создаёт в Workspace/EggGame:
+	  Arena       — пол, стены, деревья
+	  Market      — рынок в центре, точка спавна игроков
+	  Bases       — 16 баз по кругу: площадка, склад, вывеска
+	  Eggs        — яйца, лежащие на рынке
+	  VaultEggs   — яйца, лежащие на складах баз
+	  Carried     — яйца в руках/за спиной игроков
+]]
+
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
+
+local Map = {}
+
+local RNG = Random.new()
+
+-- ============================================================
+-- ХЕЛПЕРЫ
+-- ============================================================
+
+local function newPart(props)
+	local part = Instance.new("Part")
+	part.Anchored = true
+	part.CanCollide = false
+	part.Material = Enum.Material.SmoothPlastic
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in pairs(props) do
+		part[key] = value
+	end
+	return part
+end
+
+-- Плоский цилиндр, лежащий горизонтально (ось цилиндра смотрит вверх)
+local function newDisc(name, position, radius, height, color, parent)
+	local disc = newPart({
+		Name = name,
+		Size = Vector3.new(height, radius * 2, radius * 2),
+		Color = color,
+		CanCollide = true,
+		Material = Enum.Material.Slate,
+	})
+	disc.Shape = Enum.PartType.Cylinder
+	disc.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
+	disc.Parent = parent
+	return disc
+end
+
+local function makeBillboard(adornee, text, color, size, offset)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Info"
+	gui.Size = size or UDim2.fromOffset(280, 46)
+	gui.StudsOffset = offset or Vector3.new(0, 3, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = 220
+	gui.LightInfluence = 0
+	gui.Adornee = adornee
+	gui.Parent = adornee
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = color or Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.4
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.Text = text
+	label.Parent = gui
+
+	return gui, label
+end
+
+local function makePrompt(parent, actionText, objectText, distance, holdTime)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = actionText
+	prompt.ObjectText = objectText
+	prompt.MaxActivationDistance = distance or 10
+	prompt.HoldDuration = holdTime or 0
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Style = Enum.ProximityPromptStyle.Default
+	prompt.Parent = parent
+	return prompt
+end
+
+-- ============================================================
+-- ЯЙЦО КАК ЧАСТЬ
+-- ============================================================
+
+function Map.makeEggPart(eggTypeName, parent)
+	local eggType = Config.EggTypes[eggTypeName]
+	if not eggType then
+		eggTypeName = "Common"
+		eggType = Config.EggTypes.Common
+	end
+
+	-- Шар: в Roblox шар рендерится по минимальной оси,
+	-- поэтому берём ровный размер, чтобы не было сюрпризов
+	local diameter = math.max(eggType.Size.X, eggType.Size.Z)
+
+	local part = newPart({
+		Name = "Egg_" .. eggTypeName,
+		Size = Vector3.new(diameter, diameter, diameter),
+		Color = eggType.Color,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+	})
+	-- SpecialMesh со сферой + растяжение по Y даёт форму яйца
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = Vector3.new(1, 1.32, 1)
+	mesh.Parent = part
+
+	part.Parent = parent
+
+	if eggTypeName == "Epic" or eggTypeName == "Legendary" then
+		local light = Instance.new("PointLight")
+		light.Color = eggType.Color
+		light.Range = (eggTypeName == "Legendary") and 14 or 9
+		light.Brightness = (eggTypeName == "Legendary") and 2 or 1
+		light.Parent = part
+	end
+
+	return part
+end
+
+function Map.randomPointInDisc(radius)
+	local angle = RNG:NextNumber() * math.pi * 2
+	local distance = math.sqrt(RNG:NextNumber()) * radius
+	return Vector3.new(math.cos(angle) * distance, 0, math.sin(angle) * distance)
+end
+
+-- ============================================================
+-- ПОСТРОЙКА КАРТЫ
+-- ============================================================
+
+function Map.build()
+	local oldMap = Workspace:FindFirstChild("EggGame")
+	if oldMap then
+		oldMap:Destroy()
+	end
+
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child.Name == "Baseplate" or child.Name == "SpawnLocation" then
+			child:Destroy()
+		end
+	end
+
+	local root = Instance.new("Folder")
+	root.Name = "EggGame"
+	root.Parent = Workspace
+
+	local function folder(name)
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = root
+		return f
+	end
+
+	local arenaFolder = folder("Arena")
+	local marketFolder = folder("Market")
+	local basesFolder = folder("Bases")
+	local eggsFolder = folder("Eggs")
+	local vaultEggsFolder = folder("VaultEggs")
+	local carriedFolder = folder("Carried")
+
+	-- ===================== СВЕТ =====================
+	Lighting.Ambient = Color3.fromRGB(96, 102, 128)
+	Lighting.OutdoorAmbient = Color3.fromRGB(128, 138, 168)
+	Lighting.Brightness = 2.5
+	Lighting.ClockTime = 15.2
+	Lighting.EnvironmentDiffuseScale = 0.4
+	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.GlobalShadows = true
+	Lighting.FogEnd = 1400
+	Lighting.FogStart = 400
+
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Parent = Lighting
+	end
+	atmosphere.Density = 0.32
+	atmosphere.Offset = 0.2
+	atmosphere.Color = Color3.fromRGB(205, 214, 232)
+	atmosphere.Decay = Color3.fromRGB(125, 145, 185)
+	atmosphere.Glare = 0.15
+	atmosphere.Haze = 1.4
+
+	-- ===================== ПОЛ И СТЕНЫ =====================
+	local arenaSize = Config.ArenaSize
+
+	local floor = newPart({
+		Name = "Floor",
+		Size = Vector3.new(arenaSize, 6, arenaSize),
+		Position = Vector3.new(0, -3, 0),
+		Color = Config.Colors.Floor,
+		Material = Enum.Material.Grass,
+		CanCollide = true,
+	})
+	floor.Parent = arenaFolder
+
+	local baseRing = newDisc("BaseRing", Vector3.new(0, 0.05, 0), Config.BaseRingRadius + 30, 0.12, Color3.fromRGB(88, 100, 120), arenaFolder)
+	baseRing.CanCollide = false
+	baseRing.Material = Enum.Material.Concrete
+
+	local wallHeight = 20
+	local wallThickness = 5
+	local halfSize = arenaSize / 2
+	local wallDefs = {
+		{ Vector3.new(0, wallHeight / 2, -halfSize), Vector3.new(arenaSize + wallThickness, wallHeight, wallThickness) },
+		{ Vector3.new(0, wallHeight / 2, halfSize), Vector3.new(arenaSize + wallThickness, wallHeight, wallThickness) },
+		{ Vector3.new(-halfSize, wallHeight / 2, 0), Vector3.new(wallThickness, wallHeight, arenaSize) },
+		{ Vector3.new(halfSize, wallHeight / 2, 0), Vector3.new(wallThickness, wallHeight, arenaSize) },
+	}
+	for index, def in ipairs(wallDefs) do
+		local wall = newPart({
+			Name = "Wall" .. index,
+			Size = def[2],
+			Position = def[1],
+			Color = Config.Colors.Wall,
+			Material = Enum.Material.Concrete,
+			CanCollide = true,
+		})
+		wall.Parent = arenaFolder
+	end
+
+	-- ===================== РЫНОК =====================
+	local marketFloor = newDisc("MarketFloor", Vector3.new(0, 0.3, 0), Config.MarketRadius + 5, 1.2, Color3.fromRGB(126, 112, 96), marketFolder)
+	marketFloor.Material = Enum.Material.Cobblestone
+
+	local marketGlow = newDisc("MarketGlow", Vector3.new(0, 0.95, 0), Config.MarketRadius + 6.5, 0.14, Config.Colors.Market, marketFolder)
+	marketGlow.Material = Enum.Material.Neon
+	marketGlow.CanCollide = false
+
+	-- Центральный постамент с огромным яйцом-памятником
+	local pedestal = newDisc("Pedestal", Vector3.new(0, 1.6, 0), 5.5, 2.6, Color3.fromRGB(152, 134, 114), marketFolder)
+	pedestal.Material = Enum.Material.Marble
+
+	local statue = Map.makeEggPart("Legendary", marketFolder)
+	statue.Name = "MarketStatue"
+	statue.Size = Vector3.new(4.6, 5.4, 4.6)
+	statue.Position = Vector3.new(0, 6.4, 0)
+
+	-- Фонари по кругу
+	for i = 1, 8 do
+		local angle = (i / 8) * math.pi * 2
+		local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (Config.MarketRadius + 3.5)
+
+		local post = newPart({
+			Name = "LanternPost",
+			Size = Vector3.new(0.9, 10, 0.9),
+			Position = position + Vector3.new(0, 5, 0),
+			Color = Color3.fromRGB(46, 42, 40),
+			Material = Enum.Material.Metal,
+			CanCollide = true,
+		})
+		post.Parent = marketFolder
+
+		local bulb = newPart({
+			Name = "Lantern",
+			Size = Vector3.new(1.9, 1.9, 1.9),
+			Position = position + Vector3.new(0, 10.4, 0),
+			Color = Config.Colors.Market,
+			Material = Enum.Material.Neon,
+		})
+		bulb.Shape = Enum.PartType.Ball
+		bulb.Parent = marketFolder
+
+		local light = Instance.new("PointLight")
+		light.Color = Config.Colors.Market
+		light.Range = 30
+		light.Brightness = 1.6
+		light.Parent = bulb
+	end
+
+	-- Точка спавна игроков
+	local spawnLocation = Instance.new("SpawnLocation")
+	spawnLocation.Name = "PlayerSpawn"
+	spawnLocation.Size = Vector3.new(16, 1, 16)
+	spawnLocation.Position = Vector3.new(0, 1.4, 16)
+	spawnLocation.Anchored = true
+	spawnLocation.CanCollide = false
+	spawnLocation.Transparency = 0.6
+	spawnLocation.Color = Config.Colors.Market
+	spawnLocation.Material = Enum.Material.Neon
+	spawnLocation.Neutral = true
+	spawnLocation.Duration = 0
+	spawnLocation.Parent = marketFolder
+
+	-- ===================== БАЗЫ =====================
+	local bases = {}
+
+	for index = 1, Config.BasesCount do
+		local angle = ((index - 1) / Config.BasesCount) * math.pi * 2
+		local center = Vector3.new(math.cos(angle) * Config.BaseRingRadius, 0, math.sin(angle) * Config.BaseRingRadius)
+		local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
+
+		local model = Instance.new("Model")
+		model.Name = "Base_" .. index
+		model.Parent = basesFolder
+
+		local platform = newDisc("Platform", center + Vector3.new(0, 0.4, 0), Config.BaseZoneRadius + 1.5, 0.9, Config.Colors.FreeBase, model)
+		platform.Material = Enum.Material.Sand
+		platform.CanCollide = true
+
+		local glow = newDisc("Glow", center + Vector3.new(0, 0.09, 0), Config.BaseZoneRadius + 2.6, 0.12, Config.Colors.FreeBase, model)
+		glow.Material = Enum.Material.Neon
+		glow.CanCollide = false
+
+		-- Вывеска владельца
+		local signPost = newPart({
+			Name = "SignPost",
+			Size = Vector3.new(1, 13, 1),
+			Position = center - outward * (Config.BaseZoneRadius - 1) + Vector3.new(0, 7, 0),
+			Color = Color3.fromRGB(62, 56, 50),
+			Material = Enum.Material.Wood,
+			CanCollide = true,
+		})
+		signPost.Parent = model
+
+		local signBoard = newPart({
+			Name = "SignBoard",
+			Size = Vector3.new(13, 5.5, 0.6),
+			Position = center - outward * (Config.BaseZoneRadius - 1) + Vector3.new(0, 14, 0),
+			Color = Color3.fromRGB(42, 36, 30),
+			Material = Enum.Material.Wood,
+			CanCollide = false,
+		})
+		signBoard.CFrame = CFrame.new(signBoard.Position, Vector3.new(0, signBoard.Position.Y, 0))
+		signBoard.Parent = model
+
+		local _, signLabel = makeBillboard(signBoard, "Свободная база", Color3.new(1, 1, 1), UDim2.fromOffset(320, 62), Vector3.new(0, 0.2, 0.7))
+
+		-- Склад: стол + поверхность с яйцами
+		local stand = newPart({
+			Name = "VaultStand",
+			Size = Vector3.new(10, 3.6, 10),
+			Position = center + Vector3.new(0, 2.2, 0),
+			Color = Color3.fromRGB(112, 88, 62),
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = true,
+		})
+		stand.Parent = model
+
+		local vaultTop = newPart({
+			Name = "VaultTop",
+			Size = Vector3.new(9.4, 0.6, 9.4),
+			Position = center + Vector3.new(0, 4.3, 0),
+			Color = Color3.fromRGB(148, 118, 84),
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = true,
+		})
+		vaultTop.Parent = model
+
+		local vaultGlow = newPart({
+			Name = "VaultGlow",
+			Size = Vector3.new(10.2, 0.22, 10.2),
+			Position = center + Vector3.new(0, 4.68, 0),
+			Color = Config.Colors.Vault,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		vaultGlow.Parent = model
+
+		local _, vaultLabel = makeBillboard(vaultTop, "🏦 0", Color3.fromRGB(255, 226, 140), UDim2.fromOffset(240, 44), Vector3.new(0, 3.4, 0))
+		local stealPrompt = makePrompt(vaultTop, "Украсть яйца", "Чужой склад", 12, Config.RaidHoldTime)
+
+		-- Декоративные украшения базы
+		for side = 1, 2 do
+			local sideAngle = angle + (side == 1 and 0.45 or -0.45)
+			local sidePos = Vector3.new(math.cos(sideAngle), 0, math.sin(sideAngle)) * (Config.BaseRingRadius + Config.BaseZoneRadius - 2)
+			local crate = newPart({
+				Name = "Crate",
+				Size = Vector3.new(3, 3, 3),
+				Position = sidePos + Vector3.new(0, 1.9, 0),
+				Color = Color3.fromRGB(124, 96, 64),
+				Material = Enum.Material.WoodPlanks,
+				CanCollide = true,
+			})
+			crate.CFrame = crate.CFrame * CFrame.Angles(0, math.rad(side * 22 + index * 7), 0)
+			crate.Parent = model
+		end
+
+		-- Персональный маркер: каждый клиент видит его только над своей базой
+		local marker = newPart({
+			Name = "MyBaseMarker",
+			Size = Vector3.new(7, 7, 7),
+			Position = center + Vector3.new(0, 40, 0),
+			Color = Config.Colors.MyBase,
+			Material = Enum.Material.Neon,
+			Transparency = 0.35,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		marker.Shape = Enum.PartType.Ball
+		marker.Transparency = 1
+		marker.Parent = model
+
+		local markerGui = Instance.new("BillboardGui")
+		markerGui.Name = "MarkerGui"
+		markerGui.Size = UDim2.fromOffset(220, 54)
+		markerGui.StudsOffset = Vector3.new(0, 6, 0)
+		markerGui.AlwaysOnTop = true
+		markerGui.MaxDistance = 900
+		markerGui.LightInfluence = 0
+		markerGui.Adornee = marker
+		markerGui.Enabled = false
+		markerGui.Parent = marker
+
+		local markerLabel = Instance.new("TextLabel")
+		markerLabel.Size = UDim2.fromScale(1, 1)
+		markerLabel.BackgroundTransparency = 1
+		markerLabel.Font = Enum.Font.GothamBlack
+		markerLabel.Text = "МОЯ БАЗА"
+		markerLabel.TextScaled = true
+		markerLabel.TextColor3 = Config.Colors.MyBase
+		markerLabel.TextStrokeTransparency = 0.2
+		markerLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		markerLabel.Parent = markerGui
+
+		table.insert(bases, {
+			Id = index,
+			Model = model,
+			Center = center,
+			Platform = platform,
+			Glow = glow,
+			SignLabel = signLabel,
+			Marker = marker,
+			MarkerGui = markerGui,
+			VaultTop = vaultTop,
+			VaultGlow = vaultGlow,
+			VaultLabel = vaultLabel,
+			StealPrompt = stealPrompt,
+			Owners = {},          -- массив Player
+			Vault = {},           -- [typeName] = count
+			VaultTotal = 0,
+			VisualEggs = {},
+			IncomeAccum = 0,
+			IncomePerSecond = 0,
+		})
+	end
+
+	-- ===================== ДЕРЕВЬЯ =====================
+	local natureFolder = folder("Nature")
+
+	local maxTreeRadius = halfSize - 16
+	for _ = 1, 30 do
+		local angle = RNG:NextNumber() * math.pi * 2
+		local radius = Config.BaseRingRadius + 26 + RNG:NextNumber() * (maxTreeRadius - Config.BaseRingRadius - 26)
+		radius = math.min(radius, maxTreeRadius)
+		local position = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+
+		local trunkHeight = 7 + RNG:NextNumber() * 6
+
+		local trunk = newPart({
+			Name = "Trunk",
+			Size = Vector3.new(2.2, trunkHeight, 2.2),
+			Color = Color3.fromRGB(98, 70, 48),
+			Material = Enum.Material.Wood,
+			CanCollide = true,
+		})
+		trunk.Shape = Enum.PartType.Cylinder
+		trunk.CFrame = CFrame.new(position + Vector3.new(0, trunkHeight / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
+		trunk.Parent = natureFolder
+
+		for leaf = 1, 3 do
+			local leafSize = 8 - leaf * 1.4 + RNG:NextNumber() * 1.4
+			local crown = newPart({
+				Name = "Crown",
+				Size = Vector3.new(leafSize, leafSize * 0.8, leafSize),
+				Position = position + Vector3.new(
+					(RNG:NextNumber() - 0.5) * 2.5,
+					trunkHeight + (leaf - 1) * 2.6 - 1.5,
+					(RNG:NextNumber() - 0.5) * 2.5
+				),
+				Color = Color3.fromRGB(58, 138, 78):Lerp(Color3.fromRGB(96, 180, 108), RNG:NextNumber()),
+				Material = Enum.Material.Grass,
+				CanCollide = false,
+			})
+			crown.Shape = Enum.PartType.Ball
+			crown.Parent = natureFolder
+		end
+	end
+
+	-- ===================== ТАБЛО ЛИДЕРОВ =====================
+	local boardStand = newPart({
+		Name = "LeaderboardStand",
+		Size = Vector3.new(1.4, 16, 1.4),
+		Position = Vector3.new(-Config.MarketRadius - 8, 8, 0),
+		Color = Color3.fromRGB(50, 45, 42),
+		Material = Enum.Material.Metal,
+		CanCollide = true,
+	})
+	boardStand.Parent = marketFolder
+
+	local board = newPart({
+		Name = "Leaderboard",
+		Size = Vector3.new(18, 12, 1),
+		Position = Vector3.new(-Config.MarketRadius - 8, 20, 0),
+		Color = Color3.fromRGB(24, 26, 34),
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+	})
+	board.CFrame = CFrame.new(board.Position, Vector3.new(0, board.Position.Y, 0))
+	board.Parent = marketFolder
+
+	local surface = Instance.new("SurfaceGui")
+	surface.Name = "BoardGui"
+	surface.Face = Enum.NormalId.Front
+	surface.CanvasSize = Vector2.new(600, 400)
+	surface.LightInfluence = 0
+	surface.Adornee = board
+	surface.Parent = board
+
+	local boardFrame = Instance.new("Frame")
+	boardFrame.Size = UDim2.fromScale(1, 1)
+	boardFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+	boardFrame.BorderSizePixel = 0
+	boardFrame.Parent = surface
+
+	local boardTitle = Instance.new("TextLabel")
+	boardTitle.Size = UDim2.new(1, 0, 0.18, 0)
+	boardTitle.BackgroundTransparency = 1
+	boardTitle.Font = Enum.Font.GothamBlack
+	boardTitle.Text = "🏆 ЛУЧШИЕ ВОРЫ ЯИЦ"
+	boardTitle.TextScaled = true
+	boardTitle.TextColor3 = Color3.fromRGB(255, 214, 90)
+	boardTitle.Parent = boardFrame
+
+	local boardList = Instance.new("TextLabel")
+	boardList.Position = UDim2.new(0.05, 0, 0.2, 0)
+	boardList.Size = UDim2.new(0.9, 0, 0.78, 0)
+	boardList.BackgroundTransparency = 1
+	boardList.Font = Enum.Font.GothamBold
+	boardList.TextXAlignment = Enum.TextXAlignment.Left
+	boardList.TextYAlignment = Enum.TextYAlignment.Top
+	boardList.TextSize = 24
+	boardList.TextWrapped = true
+	boardList.TextColor3 = Color3.fromRGB(235, 240, 255)
+	boardList.Text = "Ждём игроков..."
+	boardList.Parent = boardFrame
+
+	return {
+		Root = root,
+		Arena = arenaFolder,
+		Market = marketFolder,
+		BasesFolder = basesFolder,
+		Eggs = eggsFolder,
+		VaultEggs = vaultEggsFolder,
+		Carried = carriedFolder,
+		Nature = natureFolder,
+		BasesData = bases,
+		MarketCenter = Vector3.new(0, 0, 0),
+		LeaderboardList = boardList,
+	}
+end
+
+return Map
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	<Item class="ModuleScript" referent="RBX4">
+		<Properties>
+			<string name="Name">EggGameData</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameData — данные игроков, сохранение и покупка улучшений.
+
+	Место в Studio: ServerScriptService -> ModuleScript "EggGameData"
+
+	Внутри хранит таблицу:
+	{
+		Coins = 0,
+		TotalEarned = 0,
+		EggsCollected = 0,
+		EggsStolen = 0,
+		EggsLost = 0,
+		Levels = { Backpack = 0, Speed = 0, Magnet = 0, Steal = 0, Vault = 0, Income = 0 },
+	}
+]]
+
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
+
+local Data = {}
+
+local store = nil
+local storeBlocked = false
+
+local cache = {}       -- [Player] = data
+local loaded = {}      -- [Player] = true
+
+-- ============================================================
+-- ХРАНИЛИЩЕ
+-- ============================================================
+
+local function getStore()
+	if store then
+		return store
+	end
+	if storeBlocked then
+		return nil
+	end
+
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(Config.SaveFolder)
+	end)
+
+	if ok and result then
+		store = result
+		return store
+	end
+
+	storeBlocked = true
+	warn("[EggGame] DataStore недоступен — прогресс не сохраняется. " ..
+		"В Studio включи Game Settings -> Security -> Enable Studio Access to API Services. Ошибка: " .. tostring(result))
+	return nil
+end
+
+local function defaultData()
+	local levels = {}
+	for upgradeName in pairs(Config.Upgrades) do
+		levels[upgradeName] = 0
+	end
+
+	return {
+		Coins = Config.StartingCoins,
+		TotalEarned = 0,
+		EggsCollected = 0,
+		EggsStolen = 0,
+		EggsLost = 0,
+		BaseId = nil,
+		Levels = levels,
+	}
+end
+
+-- Приводим сохранение к актуальной схеме, защищаемся от мусора в данных
+local function sanitize(raw)
+	local data = defaultData()
+	if type(raw) ~= "table" then
+		return data
+	end
+
+	data.Coins = math.clamp(tonumber(raw.Coins) or 0, 0, 1e12)
+	data.TotalEarned = math.max(0, tonumber(raw.TotalEarned) or 0)
+	data.EggsCollected = math.max(0, tonumber(raw.EggsCollected) or 0)
+	data.EggsStolen = math.max(0, tonumber(raw.EggsStolen) or 0)
+	data.EggsLost = math.max(0, tonumber(raw.EggsLost) or 0)
+
+	if raw.BaseId ~= nil then
+		local baseId = math.floor(tonumber(raw.BaseId) or 0)
+		if baseId >= 1 and baseId <= Config.BasesCount then
+			data.BaseId = baseId
+		end
+	end
+
+	if type(raw.Levels) == "table" then
+		for upgradeName, upgradeConfig in pairs(Config.Upgrades) do
+			local level = math.floor(tonumber(raw.Levels[upgradeName]) or 0)
+			data.Levels[upgradeName] = math.clamp(level, 0, upgradeConfig.MaxLevel)
+		end
+	end
+
+	return data
+end
+
+-- ============================================================
+-- БАЗОВЫЕ ОПЕРАЦИИ
+-- ============================================================
+
+function Data.get(player)
+	return cache[player]
+end
+
+function Data.isLoaded(player)
+	return loaded[player] == true
+end
+
+function Data.getCoins(player)
+	local data = cache[player]
+	return data and data.Coins or 0
+end
+
+function Data.addCoins(player, amount)
+	local data = cache[player]
+	if not data then
+		return
+	end
+	data.Coins = math.max(0, data.Coins + amount)
+	if amount > 0 then
+		data.TotalEarned += amount
+	end
+end
+
+function Data.addStat(player, statName, amount)
+	local data = cache[player]
+	if not data or type(data[statName]) ~= "number" then
+		return
+	end
+	data[statName] += amount
+end
+
+function Data.getLevel(player, upgradeName)
+	local data = cache[player]
+	if not data then
+		return 0
+	end
+	return data.Levels[upgradeName] or 0
+end
+
+-- Итоговое значение улучшения по его текущему уровню
+function Data.getUpgradeValue(player, upgradeName)
+	local upgradeConfig = Config.Upgrades[upgradeName]
+	if not upgradeConfig then
+		return 0
+	end
+	return upgradeConfig.BaseValue + Data.getLevel(player, upgradeName) * upgradeConfig.PerLevel
+end
+
+-- Цена следующего уровня (nil, если уже максимум)
+function Data.getUpgradeCost(player, upgradeName)
+	local upgradeConfig = Config.Upgrades[upgradeName]
+	if not upgradeConfig then
+		return nil
+	end
+
+	local level = Data.getLevel(player, upgradeName)
+	if level >= upgradeConfig.MaxLevel then
+		return nil
+	end
+
+	return math.floor(upgradeConfig.BaseCost * (upgradeConfig.CostGrowth ^ level) + 0.5)
+end
+
+-- Возвращает success, message
+function Data.purchaseUpgrade(player, upgradeName)
+	local upgradeConfig = Config.Upgrades[upgradeName]
+	if not upgradeConfig then
+		return false, "Такого улучшения нет"
+	end
+
+	local data = cache[player]
+	if not data then
+		return false, "Данные ещё грузятся"
+	end
+
+	local level = data.Levels[upgradeName] or 0
+	if level >= upgradeConfig.MaxLevel then
+		return false, "Уже максимальный уровень"
+	end
+
+	local cost = Data.getUpgradeCost(player, upgradeName)
+	if not cost then
+		return false, "Уже максимальный уровень"
+	end
+
+	if data.Coins < cost then
+		return false, "Не хватает монет"
+	end
+
+	data.Coins -= cost
+	data.Levels[upgradeName] = level + 1
+
+	return true, "Куплено: " .. upgradeConfig.DisplayName
+end
+
+-- ============================================================
+-- ЗАГРУЗКА И СОХРАНЕНИЕ
+-- ============================================================
+
+function Data.load(player)
+	local data = nil
+	local targetStore = getStore()
+
+	if targetStore then
+		local key = "Player_" .. tostring(player.UserId)
+		local ok, result = pcall(function()
+			return targetStore:GetAsync(key)
+		end)
+
+		if ok then
+			data = sanitize(result)
+		else
+			warn("[EggGame] Ошибка загрузки данных " .. player.Name .. ": " .. tostring(result))
+		end
+	end
+
+	cache[player] = data or defaultData()
+	loaded[player] = true
+
+	return cache[player]
+end
+
+function Data.save(player, isFinal)
+	local data = cache[player]
+	if not data then
+		return
+	end
+
+	local targetStore = getStore()
+	if not targetStore then
+		return
+	end
+
+	local payload = {
+		Coins = data.Coins,
+		TotalEarned = data.TotalEarned,
+		EggsCollected = data.EggsCollected,
+		EggsStolen = data.EggsStolen,
+		EggsLost = data.EggsLost,
+		BaseId = data.BaseId,
+		Levels = data.Levels,
+		DataVersion = Config.DataVersion,
+	}
+
+	local key = "Player_" .. tostring(player.UserId)
+
+	local ok, result = pcall(function()
+		return targetStore:UpdateAsync(key, function()
+			return payload
+		end)
+	end)
+
+	if not ok then
+		warn("[EggGame] Ошибка сохранения данных " .. player.Name .. ": " .. tostring(result))
+	end
+end
+
+function Data.release(player)
+	Data.save(player, true)
+	cache[player] = nil
+	loaded[player] = nil
+end
+
+function Data.startAutosave()
+	task.spawn(function()
+		while true do
+			task.wait(Config.AutosaveInterval)
+			for player in pairs(cache) do
+				if player.Parent then
+					task.spawn(function()
+						Data.save(player)
+					end)
+				end
+			end
+		end
+	end)
+end
+
+function Data.isStoreAvailable()
+	return getStore() ~= nil
+end
+
+return Data
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	<Item class="ModuleScript" referent="RBX5">
+		<Properties>
+			<string name="Name">EggGameCore</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameCore — вся игровая логика на сервере.
+
+	Место в Studio: ServerScriptService -> ModuleScript "EggGameCore"
+
+	ЦИКЛ ИГРЫ
+	  1. На рынке в центре постоянно появляются яйца (4 редкости).
+	  2. Идёшь по ним — яйца сами запрыгивают в стопку над головой.
+	  3. Несёшь на свою базу — яйца сами заносятся на склад.
+	  4. Яйца на складе приносят монеты каждую секунду.
+	  5. Другие игроки могут украсть яйца у тебя из рюкзака (зажать E рядом)
+	     или обокрасть твой склад (зажать E у склада).
+	  6. Монеты тратятся в магазине на улучшения.
+
+	Клиент ничего не решает — только просит, сервер проверяет всё сам.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
+local Data = require(script.Parent:WaitForChild("EggGameData"))
+local Map = require(script.Parent:WaitForChild("EggGameMap"))
+
+local Core = {}
+
+local RNG = Random.new()
+
+-- ============================================================
+-- СОСТОЯНИЕ
+-- ============================================================
+
+local state = {
+	map = nil,
+	bases = {},         -- [baseId] = baseState
+	playerBase = {},    -- [Player] = baseId
+	groundEggs = {},    -- { { Part = part, Type = string }, ... }
+	carried = {},       -- [Player] = { Parts = {}, Types = {}, Count, LockUntil }
+	cooldowns = {},     -- [Player] = { Raid = number }
+	depositing = {},    -- [Player] = true
+	vaultFullWarned = {},
+	remotes = {},
+}
+
+-- ============================================================
+-- МЕЛКИЕ УТИЛИТЫ
+-- ============================================================
+
+local function getRoot(player)
+	local character = player.Character
+	if not character then
+		return nil
+	end
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function horizontalDistance(a, b)
+	local delta = a - b
+	return Vector3.new(delta.X, 0, delta.Z).Magnitude
+end
+
+local function getCooldown(player)
+	local cooldown = state.cooldowns[player]
+	if not cooldown then
+		cooldown = { Raid = 0 }
+		state.cooldowns[player] = cooldown
+	end
+	return cooldown
+end
+
+local function getCarried(player)
+	local carried = state.carried[player]
+	if not carried then
+		carried = { Parts = {}, Types = {}, Count = 0, LockUntil = 0 }
+		state.carried[player] = carried
+	end
+	return carried
+end
+
+local function getBackpackCapacity(player)
+	return math.max(1, math.floor(Data.getUpgradeValue(player, "Backpack")))
+end
+
+local function getVaultCapacity(base)
+	if #base.Owners == 0 then
+		return Config.VaultCapacityBase
+	end
+
+	local best = Config.VaultCapacityBase
+	for _, owner in ipairs(base.Owners) do
+		best = math.max(best, math.floor(Data.getUpgradeValue(owner, "Vault")))
+	end
+	return best
+end
+
+local function pickEggType()
+	local weightSum = 0
+	for _, eggType in pairs(Config.EggTypes) do
+		weightSum += eggType.Weight
+	end
+
+	local roll = RNG:NextNumber() * weightSum
+	for name, eggType in pairs(Config.EggTypes) do
+		roll -= eggType.Weight
+		if roll <= 0 then
+			return name
+		end
+	end
+
+	return "Common"
+end
+
+-- ============================================================
+-- УВЕДОМЛЕНИЯ
+-- ============================================================
+
+function Core.notify(player, text, color)
+	local remote = state.remotes.Notify
+	if remote and player and player.Parent then
+		remote:FireClient(player, text, color)
+	end
+end
+
+-- ============================================================
+-- БАЗЫ: ВИЗУАЛ И НАЗНАЧЕНИЕ
+-- ============================================================
+
+local function vaultValueOf(base)
+	local value = 0
+	for eggTypeName, count in pairs(base.Vault) do
+		local eggType = Config.EggTypes[eggTypeName]
+		if eggType then
+			value += eggType.Value * count
+		end
+	end
+	return value
+end
+
+local function getBaseIncomePerSecond(base, player)
+	if base.VaultTotal <= 0 then
+		return 0
+	end
+
+	local ownerCount = math.max(1, #base.Owners)
+	local rate = vaultValueOf(base) * Config.IncomeRate
+
+	if player then
+		return (rate * Data.getUpgradeValue(player, "Income")) / ownerCount
+	end
+
+	local total = 0
+	for _, owner in ipairs(base.Owners) do
+		total += (rate * Data.getUpgradeValue(owner, "Income")) / ownerCount
+	end
+	return total
+end
+
+Core.getBaseIncomePerSecond = getBaseIncomePerSecond
+
+local function updateBaseVisuals(base)
+	local owners = base.Owners
+	local ownerCount = #owners
+
+	if ownerCount == 0 then
+		base.Platform.Color = Config.Colors.FreeBase
+		base.Glow.Color = Config.Colors.FreeBase
+		base.SignLabel.Text = "Свободная база"
+		base.SignLabel.TextColor3 = Color3.fromRGB(225, 228, 235)
+		base.VaultLabel.Text = string.format("🏦 %d", base.VaultTotal)
+		base.VaultTop.Color = Color3.fromRGB(132, 110, 82)
+		base.VaultGlow.Color = Config.Colors.FreeBase
+		return
+	end
+
+	base.Platform.Color = Config.Colors.MyBase
+	base.Glow.Color = Config.Colors.MyBase
+	base.VaultTop.Color = Color3.fromRGB(150, 122, 88)
+	base.VaultGlow.Color = Config.Colors.Vault
+
+	local names = {}
+	for index, owner in ipairs(owners) do
+		if index <= 3 then
+			table.insert(names, owner.DisplayName)
+		end
+	end
+	if ownerCount > 3 then
+		table.insert(names, "+" .. (ownerCount - 3))
+	end
+
+	base.SignLabel.Text = table.concat(names, ", ")
+	base.SignLabel.TextColor3 = Color3.fromRGB(200, 255, 220)
+
+	local rate = getBaseIncomePerSecond(base, owners[1])
+	base.VaultLabel.Text = string.format("🏦 %d / %d   💰 %.1f/сек", base.VaultTotal, getVaultCapacity(base), rate)
+end
+
+-- ============================================================
+-- СИНХРОНИЗАЦИЯ С КЛИЕНТОМ
+-- ============================================================
+
+function Core.syncCoins(player)
+	local remote = state.remotes.CoinsUpdate
+	if not remote or not player.Parent then
+		return
+	end
+
+	local base = Core.getBaseForPlayerFor(player)
+	local income = base and getBaseIncomePerSecond(base, player) or 0
+
+	remote:FireClient(player, Data.getCoins(player), income)
+end
+
+function Core.syncCarried(player)
+	local remote = state.remotes.CarriedUpdate
+	if not remote or not player.Parent then
+		return
+	end
+
+	local carried = getCarried(player)
+	remote:FireClient(player, carried.Count, getBackpackCapacity(player), carried.Types)
+end
+
+function Core.syncBaseInfo(player)
+	local remote = state.remotes.BaseInfo
+	if not remote or not player.Parent then
+		return
+	end
+
+	local base = Core.getBaseForPlayerFor(player)
+	if not base then
+		remote:FireClient(player, nil)
+		return
+	end
+
+	remote:FireClient(player, {
+		BaseId = base.Id,
+		VaultTotal = base.VaultTotal,
+		Capacity = getVaultCapacity(base),
+		Income = getBaseIncomePerSecond(base, player),
+		Owners = #base.Owners,
+	})
+end
+
+-- ============================================================
+-- НАЗНАЧЕНИЕ БАЗ
+-- ============================================================
+
+function Core.getBaseForPlayerFor(player)
+	local baseId = state.playerBase[player]
+	if not baseId then
+		return nil
+	end
+	return state.bases[baseId]
+end
+
+function Core.assignBase(player)
+	local existing = state.playerBase[player]
+	if existing then
+		return existing
+	end
+
+	-- Игрок возвращается: отдаём ту же базу, если она ещё свободна или уже его
+	local data = Data.get(player)
+	local preferredId = data and data.BaseId
+
+	if preferredId then
+		local preferred = state.bases[preferredId]
+		if preferred then
+			local ownedByOther = false
+			for _, owner in ipairs(preferred.Owners) do
+				if owner ~= player then
+					ownedByOther = true
+					break
+				end
+			end
+
+			if not ownedByOther then
+				local alreadyThere = false
+				for _, owner in ipairs(preferred.Owners) do
+					if owner == player then
+						alreadyThere = true
+						break
+					end
+				end
+
+				if not alreadyThere then
+					table.insert(preferred.Owners, player)
+				end
+
+				state.playerBase[player] = preferred.Id
+				updateBaseVisuals(preferred)
+				Core.syncBaseInfo(player)
+				return preferred.Id
+			end
+		end
+	end
+
+	-- Ищем базу с наименьшим числом владельцев (сначала пустые)
+	local bestBase, bestCount = nil, math.huge
+	for _, base in ipairs(state.map.BasesData) do
+		local count = #base.Owners
+		if count < bestCount then
+			bestCount, bestBase = count, base
+		end
+		if count == 0 then
+			break
+		end
+	end
+
+	if not bestBase then
+		return nil
+	end
+
+	table.insert(bestBase.Owners, player)
+	state.playerBase[player] = bestBase.Id
+
+	local data = Data.get(player)
+	if data then
+		data.BaseId = bestBase.Id
+	end
+
+	updateBaseVisuals(bestBase)
+
+	Core.syncBaseInfo(player)
+
+	return bestBase.Id
+end
+
+function Core.releaseBase(player, keepPreference)
+	local baseId = state.playerBase[player]
+	state.playerBase[player] = nil
+
+	if not baseId then
+		return
+	end
+
+	local base = state.bases[baseId]
+	if not base then
+		return
+	end
+
+	for index, owner in ipairs(base.Owners) do
+		if owner == player then
+			table.remove(base.Owners, index)
+			break
+		end
+	end
+
+	base.RateAccum[player] = nil
+	updateBaseVisuals(base)
+
+	if not keepPreference then
+		local data = Data.get(player)
+		if data then
+			data.BaseId = nil
+		end
+	end
+end
+
+-- ============================================================
+-- ЯЙЦА НА РЫНКЕ
+-- ============================================================
+
+function Core.spawnGroundEgg()
+	if #state.groundEggs >= Config.MaxGroundEggs then
+		return nil
+	end
+
+	local offset = Map.randomPointInDisc(Config.MarketRadius - 6)
+
+	-- Не кладём яйца друг на друга
+	for _ = 1, 6 do
+		local tooClose = false
+		for _, groundEgg in ipairs(state.groundEggs) do
+			if groundEgg.Part and groundEgg.Part.Parent then
+				local delta = groundEgg.Part.Position - offset
+				if Vector3.new(delta.X, 0, delta.Z).Magnitude < 3.4 then
+					tooClose = true
+					break
+				end
+			end
+		end
+		if not tooClose then
+			break
+		end
+		offset = Map.randomPointInDisc(Config.MarketRadius - 6)
+	end
+
+	local eggTypeName = pickEggType()
+	local part = Map.makeEggPart(eggTypeName, state.map.Eggs)
+	part.Position = Vector3.new(offset.X, 2.3, offset.Z)
+
+	local groundEgg = { Part = part, Type = eggTypeName }
+	table.insert(state.groundEggs, groundEgg)
+
+	return groundEgg
+end
+
+local function removeGroundEgg(groundEgg)
+	for index, candidate in ipairs(state.groundEggs) do
+		if candidate == groundEgg then
+			table.remove(state.groundEggs, index)
+			return
+		end
+	end
+end
+
+-- ============================================================
+-- РЮКЗАК: СТОПКА НАД ГОЛОВОЙ
+-- ============================================================
+
+local function refreshStack(player)
+	local carried = state.carried[player]
+	if not carried then
+		return
+	end
+
+	local root = getRoot(player)
+	if not root then
+		return
+	end
+
+	local columns = Config.StackColumns
+	local shown = 0
+
+	for _, part in ipairs(carried.Parts) do
+		if part and part.Parent then
+			shown += 1
+
+			if shown <= Config.MaxVisibleStack then
+				local row = math.floor((shown - 1) / columns)
+				local column = (shown - 1) % columns
+				local columnOffset = (column - (columns - 1) / 2) * Config.StackSpread
+
+				local offset = Vector3.new(
+					columnOffset,
+					Config.StackBaseHeight + row * Config.StackHeight,
+					-Config.StackBackOffset
+				)
+
+				part.CFrame = root.CFrame * CFrame.new(offset)
+				part.Anchored = true
+				part.CanCollide = false
+				part.Transparency = 0
+			else
+				part.Transparency = 1
+			end
+		end
+	end
+end
+
+local function refreshAllStacks()
+	for player in pairs(state.carried) do
+		refreshStack(player)
+	end
+end
+
+function Core.addEggToBackpack(player, eggTypeName, count)
+	count = count or 1
+
+	local carried = getCarried(player)
+	local capacity = getBackpackCapacity(player)
+
+	local added = 0
+	for _ = 1, count do
+		if carried.Count >= capacity then
+			break
+		end
+
+		local part = Map.makeEggPart(eggTypeName, state.map.Carried)
+		part.Size = part.Size * Config.CarriedEggScale
+		part.Anchored = true
+
+		table.insert(carried.Parts, part)
+		carried.Types[eggTypeName] = (carried.Types[eggTypeName] or 0) + 1
+		carried.Count += 1
+		added += 1
+	end
+
+	if added > 0 then
+		carried.LockUntil = os.clock() + Config.StealLockTime
+		refreshStack(player)
+		Core.syncCarried(player)
+	end
+
+	return added
+end
+
+-- Убирает count яиц из рюкзака. Возвращает ({[type]=count}, всего)
+function Core.takeEggsFromBackpack(player, count)
+	local carried = state.carried[player]
+	if not carried then
+		return {}, 0
+	end
+
+	local taken = {}
+	local takenTotal = 0
+
+	for _ = 1, count do
+		if carried.Count <= 0 then
+			break
+		end
+
+		local part = table.remove(carried.Parts)
+		if part then
+			part:Destroy()
+		end
+
+		-- Берём тип, которого в рюкзаке больше всего
+		local chosenType, chosenCount = nil, 0
+		for eggTypeName, typeCount in pairs(carried.Types) do
+			if typeCount > chosenCount then
+				chosenType, chosenCount = eggTypeName, typeCount
+			end
+		end
+
+		if chosenType then
+			carried.Types[chosenType] -= 1
+			if carried.Types[chosenType] <= 0 then
+				carried.Types[chosenType] = nil
+			end
+			taken[chosenType] = (taken[chosenType] or 0) + 1
+		end
+
+		carried.Count -= 1
+		takenTotal += 1
+	end
+
+	if takenTotal > 0 then
+		refreshStack(player)
+		Core.syncCarried(player)
+	end
+
+	return taken, takenTotal
+end
+
+function Core.dropAllCarried(player, position)
+	local carried = state.carried[player]
+	if not carried or carried.Count <= 0 then
+		return
+	end
+
+	local root = getRoot(player)
+	local dropPosition = position or (root and root.Position) or Vector3.new(0, 2, 0)
+
+	for _, part in ipairs(carried.Parts) do
+		if part then
+			part:Destroy()
+		end
+	end
+	carried.Parts = {}
+
+	for eggTypeName, count in pairs(carried.Types) do
+		for _ = 1, count do
+			local offset = Map.randomPointInDisc(5)
+			local part = Map.makeEggPart(eggTypeName, state.map.Eggs)
+			part.Position = dropPosition + offset + Vector3.new(0, 1.8, 0)
+			table.insert(state.groundEggs, { Part = part, Type = eggTypeName })
+		end
+	end
+
+	carried.Types = {}
+	carried.Count = 0
+	Core.syncCarried(player)
+end
+
+function Core.getCarriedCount(player)
+	local carried = state.carried[player]
+	return carried and carried.Count or 0
+end
+
+-- ============================================================
+-- ПОДБОР ЯИЦ (автоматический)
+-- ============================================================
+
+local function isInsideOwnBase(player)
+	local base = Core.getBaseForPlayerFor(player)
+	local root = getRoot(player)
+	if not base or not root then
+		return false
+	end
+	return horizontalDistance(root.Position, base.Center) <= Config.BaseZoneRadius + 1
+end
+
+local function startPickupLoop()
+	task.spawn(function()
+		while true do
+			task.wait(0.15)
+
+			for _, player in ipairs(Players:GetPlayers()) do
+				local root = getRoot(player)
+				local carried = state.carried[player]
+
+				if root and carried and Data.isLoaded(player) and carried.Count < getBackpackCapacity(player) then
+					-- Если стоишь на своей базе, яйца не подбираем — они сразу уходят в склад
+					if not isInsideOwnBase(player) then
+						local radius = Config.PickupRadius
+						local magnetLevel = Data.getLevel(player, "Magnet")
+						if magnetLevel > 0 then
+							radius += Data.getUpgradeValue(player, "Magnet")
+						end
+
+						local nearest, nearestDistance = nil, math.huge
+						for _, groundEgg in ipairs(state.groundEggs) do
+							local part = groundEgg.Part
+							if part and part.Parent then
+								local horizontal = horizontalDistance(part.Position, root.Position)
+								local vertical = math.abs(part.Position.Y - root.Position.Y)
+
+								if horizontal <= radius and vertical <= 14 and horizontal < nearestDistance then
+									nearest, nearestDistance = groundEgg, horizontal
+								end
+							end
+						end
+
+						if nearest then
+							local eggTypeName = nearest.Type
+							removeGroundEgg(nearest)
+							if nearest.Part then
+								nearest.Part:Destroy()
+							end
+
+							local added = Core.addEggToBackpack(player, eggTypeName, 1)
+							if added > 0 then
+								Data.addStat(player, "EggsCollected", 1)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- ============================================================
+-- СКЛАД: ВИЗУАЛ И СДАЧА
+-- ============================================================
+
+function Core.refreshVaultVisuals(base)
+	for _, part in ipairs(base.VisualEggs) do
+		if part then
+			part:Destroy()
+		end
+	end
+	base.VisualEggs = {}
+
+	local maxVisual = 12
+	local shown = 0
+
+	for eggTypeName, count in pairs(base.Vault) do
+		local toShow = math.min(count, maxVisual - shown)
+
+		for index = 1, toShow do
+			local part = Map.makeEggPart(eggTypeName, state.map.VaultEggs)
+			part.Size = part.Size * Config.VaultEggScale
+			part.Anchored = true
+
+			local row = math.floor(shown / 4)
+			local column = shown % 4
+			local jitter = (RNG:NextNumber() - 0.5) * 0.5
+
+			part.Position = base.Center + Vector3.new(
+				(column - 1.5) * 2.1,
+				5.3 + row * 1.3,
+				-1.4 + (row % 2) * 0.8 + jitter
+			)
+
+			table.insert(base.VisualEggs, part)
+			shown += 1
+		end
+
+		if shown >= maxVisual then
+			break
+		end
+	end
+end
+
+function Core.startDeposit(player)
+	if state.depositing[player] then
+		return
+	end
+	state.depositing[player] = true
+
+	task.spawn(function()
+		while true do
+			task.wait(Config.DepositTime)
+
+			local carried = state.carried[player]
+			if not carried or carried.Count <= 0 then
+				break
+			end
+
+			local base = Core.getBaseForPlayerFor(player)
+			if not base or not isInsideOwnBase(player) then
+				break
+			end
+
+			if base.VaultTotal >= getVaultCapacity(base) then
+				if not state.vaultFullWarned[player] then
+					state.vaultFullWarned[player] = true
+					Core.notify(player, "Склад полон! Улучши «Склад» в магазине", Color3.fromRGB(255, 170, 120))
+				end
+				break
+			end
+
+			state.vaultFullWarned[player] = nil
+
+			local taken, takenTotal = Core.takeEggsFromBackpack(player, 1)
+			if takenTotal <= 0 then
+				break
+			end
+
+			for eggTypeName, count in pairs(taken) do
+				base.Vault[eggTypeName] = (base.Vault[eggTypeName] or 0) + count
+				base.VaultTotal += count
+			end
+
+			Core.refreshVaultVisuals(base)
+			updateBaseVisuals(base)
+
+			Core.syncCarried(player)
+			Core.syncBaseInfo(player)
+		end
+
+		state.depositing[player] = nil
+	end)
+end
+
+-- ============================================================
+-- КРАЖА С ЧУЖОГО СКЛАДА
+-- ============================================================
+
+function Core.tryRaid(player, baseId)
+	baseId = tonumber(baseId)
+	if not baseId then
+		return false, "Неверная база"
+	end
+
+	local base = state.bases[baseId]
+	if not base then
+		return false, "Нет такой базы"
+	end
+
+	if not Data.isLoaded(player) then
+		return false, "Подожди загрузку"
+	end
+
+	for _, owner in ipairs(base.Owners) do
+		if owner == player then
+			return false, "Это твоя база"
+		end
+	end
+
+	if base.VaultTotal <= 0 then
+		return false, "Склад пуст"
+	end
+
+	local cooldown = getCooldown(player)
+	if os.clock() < cooldown.Raid then
+		return false, "Рано"
+	end
+
+	local root = getRoot(player)
+	if not root then
+		return false, "Нет персонажа"
+	end
+
+	if horizontalDistance(root.Position, base.Center) > Config.BaseZoneRadius + 10 then
+		return false, "Подойди ближе"
+	end
+
+	local carried = getCarried(player)
+	local capacity = getBackpackCapacity(player) - carried.Count
+	if capacity <= 0 then
+		return false, "Рюкзак полон"
+	end
+
+	local stealPower = math.max(1, math.floor(Data.getUpgradeValue(player, "Steal")))
+	local amount = math.min(stealPower, capacity, base.VaultTotal)
+
+	local takenTotal = 0
+	local takenValue = 0
+
+	-- Забираем самые дорогие яйца
+	for _ = 1, amount do
+		local bestType, bestValue = nil, -1
+		for eggTypeName, count in pairs(base.Vault) do
+			if count > 0 then
+				local eggType = Config.EggTypes[eggTypeName]
+				if eggType and eggType.Value > bestValue then
+					bestType, bestValue = eggTypeName, eggType.Value
+				end
+			end
+		end
+
+		if not bestType then
+			break
+		end
+
+		base.Vault[bestType] -= 1
+		if base.Vault[bestType] <= 0 then
+			base.Vault[bestType] = nil
+		end
+		base.VaultTotal -= 1
+
+		Core.addEggToBackpack(player, bestType, 1)
+		takenTotal += 1
+		takenValue += bestValue
+	end
+
+	cooldown.Raid = os.clock() + Config.StealCooldown
+
+	if takenTotal <= 0 then
+		return false, "Не удалось ничего взять"
+	end
+
+	Core.refreshVaultVisuals(base)
+	updateBaseVisuals(base)
+	Data.addStat(player, "EggsStolen", takenTotal)
+
+	Core.notify(player, string.format("🥷 Украдено %d яиц (≈%d 💰)", takenTotal, takenValue), Color3.fromRGB(255, 210, 90))
+
+	for _, owner in ipairs(base.Owners) do
+		Data.addStat(owner, "EggsLost", takenTotal)
+		Core.notify(owner, string.format("⚠️ %s украл %d яиц с твоей базы!", player.DisplayName, takenTotal), Color3.fromRGB(255, 110, 100))
+		Core.syncBaseInfo(owner)
+	end
+
+	Core.syncBaseInfo(player)
+	return true, "Украдено " .. takenTotal
+end
+
+-- ============================================================
+-- КРАЖА ИЗ РЮКЗАКА ИГРОКА
+-- ============================================================
+
+function Core.tryStealFromPlayer(thief, victim)
+	if thief == victim then
+		return false, "Себя обкрадывать не нужно"
+	end
+
+	if not Data.isLoaded(thief) or not Data.isLoaded(victim) then
+		return false, "Подожди загрузку"
+	end
+
+	local cooldown = getCooldown(thief)
+	if os.clock() < cooldown.Raid then
+		return false, "Рано"
+	end
+
+	local victimCarried = state.carried[victim]
+	if not victimCarried or victimCarried.Count <= 0 then
+		Core.notify(thief, "У него пусто", Color3.fromRGB(200, 210, 230))
+		return false, "У него пусто"
+	end
+
+	if os.clock() < victimCarried.LockUntil then
+		Core.notify(thief, "Он держит яйца крепко — подожди", Color3.fromRGB(255, 190, 120))
+		return false, "Он держит крепко"
+	end
+
+	local thiefRoot = getRoot(thief)
+	local victimRoot = getRoot(victim)
+	if not thiefRoot or not victimRoot then
+		return false, "Далеко"
+	end
+
+	if horizontalDistance(thiefRoot.Position, victimRoot.Position) > 10 then
+		return false, "Подойди ближе"
+	end
+
+	local carried = getCarried(thief)
+	local capacity = getBackpackCapacity(thief) - carried.Count
+	if capacity <= 0 then
+		Core.notify(thief, "Твой рюкзак полон", Color3.fromRGB(255, 170, 120))
+		return false, "Твой рюкзак полон"
+	end
+
+	local stealPower = math.max(1, math.floor(Data.getUpgradeValue(thief, "Steal")))
+	local amount = math.min(stealPower, capacity, victimCarried.Count)
+
+	local taken, takenTotal = Core.takeEggsFromBackpack(victim, amount)
+	if takenTotal <= 0 then
+		return false, "Не удалось"
+	end
+
+	for eggTypeName, count in pairs(taken) do
+		Core.addEggToBackpack(thief, eggTypeName, count)
+	end
+
+	cooldown.Raid = os.clock() + Config.StealCooldown
+
+	Data.addStat(thief, "EggsStolen", takenTotal)
+	Data.addStat(victim, "EggsLost", takenTotal)
+
+	Core.notify(thief, string.format("🥷 Украл %d яиц у %s!", takenTotal, victim.DisplayName), Color3.fromRGB(255, 210, 90))
+	Core.notify(victim, string.format("⚠️ %s украл у тебя %d яиц!", thief.DisplayName, takenTotal), Color3.fromRGB(255, 110, 100))
+
+	return true, "Украдено " .. takenTotal
+end
+
+local function attachPlayerStealPrompt(player, character)
+	local root = character:WaitForChild("HumanoidRootPart", 10)
+	if not root then
+		return
+	end
+
+	local oldPrompt = character:FindFirstChild("StealFromMe")
+	if oldPrompt then
+		oldPrompt:Destroy()
+	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "StealFromMe"
+	prompt.ActionText = "Украсть яйца"
+	prompt.ObjectText = player.DisplayName
+	prompt.HoldDuration = Config.PlayerStealHoldTime
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Parent = root
+
+	prompt.Triggered:Connect(function(thief)
+		Core.tryStealFromPlayer(thief, player)
+	end)
+end
+
+-- ============================================================
+-- ДОХОД
+-- ============================================================
+
+local function startIncomeLoop()
+	task.spawn(function()
+		while true do
+			task.wait(1)
+
+			for _, base in ipairs(state.map.BasesData) do
+				local ownerCount = #base.Owners
+
+				if ownerCount > 0 and base.VaultTotal > 0 then
+					local rate = vaultValueOf(base) * Config.IncomeRate
+					local totalIncome = 0
+
+					for _, owner in ipairs(base.Owners) do
+						local incomeMultiplier = Data.getUpgradeValue(owner, "Income")
+						local share = (rate * incomeMultiplier) / ownerCount
+
+						base.RateAccum[owner] = (base.RateAccum[owner] or 0) + share
+
+						local whole = math.floor(base.RateAccum[owner])
+						if whole > 0 then
+							base.RateAccum[owner] -= whole
+							Data.addCoins(owner, whole)
+						end
+
+						totalIncome += share
+					end
+
+					base.IncomePerSecond = totalIncome
+					updateBaseVisuals(base)
+
+					for _, owner in ipairs(base.Owners) do
+						Core.syncCoins(owner)
+						Core.syncBaseInfo(owner)
+					end
+				else
+					base.IncomePerSecond = 0
+					if base.VaultTotal == 0 then
+						base.RateAccum = {}
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- ============================================================
+-- СКОРОСТЬ ПЕРСОНАЖА
+-- ============================================================
+
+local function startSpeedLoop()
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+
+			for _, player in ipairs(Players:GetPlayers()) do
+				if Data.isLoaded(player) then
+					local character = player.Character
+					local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+					if humanoid then
+						local carried = state.carried[player]
+						local penalty = 0
+
+						if carried and carried.Count > 0 then
+							penalty = math.min(6, carried.Count * 0.3)
+						end
+
+						local targetSpeed = math.max(8, Data.getUpgradeValue(player, "Speed") - penalty)
+
+						if math.abs(humanoid.WalkSpeed - targetSpeed) > 0.2 then
+							humanoid.WalkSpeed = targetSpeed
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- ============================================================
+-- ТАБЛО ЛИДЕРОВ
+-- ============================================================
+
+local function startLeaderboardLoop()
+	task.spawn(function()
+		while true do
+			task.wait(3)
+
+			local board = state.map and state.map.LeaderboardList
+			if board then
+				local entries = {}
+				for _, player in ipairs(Players:GetPlayers()) do
+					if Data.isLoaded(player) then
+						local data = Data.get(player)
+						table.insert(entries, {
+							Name = player.DisplayName,
+							Score = data.TotalEarned,
+						})
+					end
+				end
+
+				table.sort(entries, function(a, b)
+					return a.Score > b.Score
+				end)
+
+				local lines = {}
+				for index = 1, math.min(8, #entries) do
+					local entry = entries[index]
+					local medal = (index == 1 and "🥇")
+						or (index == 2 and "🥈")
+						or (index == 3 and "🥉")
+						or (index .. ".")
+					table.insert(lines, string.format("%s  %s  —  %d 💰", medal, entry.Name, math.floor(entry.Score)))
+				end
+
+				board.Text = (#lines > 0) and table.concat(lines, "\n") or "Ждём игроков..."
+			end
+		end
+	end)
+end
+
+-- ============================================================
+-- ЖИЗНЕННЫЙ ЦИКЛ ИГРОКА
+-- ============================================================
+
+function Core.onCharacterAdded(player, character)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if not humanoid then
+		return
+	end
+
+	humanoid.Died:Connect(function()
+		task.wait(0.1)
+		Core.dropAllCarried(player)
+		state.depositing[player] = nil
+	end)
+
+	attachPlayerStealPrompt(player, character)
+	refreshStack(player)
+	Core.syncCarried(player)
+end
+
+function Core.cleanupPlayer(player)
+	Core.dropAllCarried(player)
+	Core.releaseBase(player, true)
+
+	state.carried[player] = nil
+	state.cooldowns[player] = nil
+	state.depositing[player] = nil
+	state.vaultFullWarned[player] = nil
+end
+
+-- ============================================================
+-- ИНИЦИАЛИЗАЦИЯ
+-- ============================================================
+
+local function startStackLoop()
+	local accumulator = 0
+	RunService.Heartbeat:Connect(function(dt)
+		accumulator += dt
+		if accumulator < 1 / 30 then
+			return
+		end
+		accumulator = 0
+		refreshAllStacks()
+	end)
+end
+
+function Core.init(mapData, remotes)
+	state.map = mapData
+	state.remotes = remotes
+	state.vaultFullWarned = {}
+
+	for _, base in ipairs(mapData.BasesData) do
+		base.RateAccum = {}
+		base.IncomePerSecond = 0
+		state.bases[base.Id] = base
+
+		updateBaseVisuals(base)
+		Core.refreshVaultVisuals(base)
+
+		base.StealPrompt.Triggered:Connect(function(player)
+			Core.tryRaid(player, base.Id)
+		end)
+	end
+
+	-- Наполняем рынок сразу, чтоб не было пусто на старте
+	for _ = 1, 12 do
+		Core.spawnGroundEgg()
+	end
+
+	task.spawn(function()
+		while true do
+			Core.spawnGroundEgg()
+			task.wait(Config.SpawnInterval)
+		end
+	end)
+
+	startPickupLoop()
+	startIncomeLoop()
+	startSpeedLoop()
+	startLeaderboardLoop()
+
+	-- Автоматическая сдача яиц при входе в свою базу
+	task.spawn(function()
+		while true do
+			task.wait(0.3)
+
+			for _, player in ipairs(Players:GetPlayers()) do
+				if Data.isLoaded(player) then
+					local carried = state.carried[player]
+					if carried and carried.Count > 0 then
+						if isInsideOwnBase(player) then
+							Core.startDeposit(player)
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	startStackLoop()
+
+	return Core
+end
+
+-- Совместимость: старые вызовы
+Core.getBaseForPlayer = Core.getBaseForPlayerFor
+Core.spawnEggLoop = function() end
+
+return Core
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	</Item>
+	</Item>
+	<Item class="StarterPlayer" referent="RBX11">
+		<Properties>
+			<string name="Name">StarterPlayer</string>
+		</Properties>
+	<Item class="StarterPlayerScripts" referent="RBX10">
+		<Properties>
+			<string name="Name">StarterPlayerScripts</string>
+		</Properties>
+	<Item class="LocalScript" referent="RBX9">
+		<Properties>
+			<string name="Name">EggGameUI</string>
+			<ProtectedString name="Source"><![CDATA[--[[
+	EggGameUI — весь интерфейс игры (LocalScript).
+
+	Место в Studio:
+	  StarterPlayer -> StarterPlayerScripts -> LocalScript с именем "EggGameUI"
+
+	Показывает:
+	  • Монеты и доход в секунду
+	  • Рюкзак: сколько яиц несёшь / сколько влезает
+	  • Склад: сколько яиц лежит на твоей базе
+	  • Кнопку магазина улучшений (клавиша B)
+	  • Всплывающие уведомления
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local remotesFolder = ReplicatedStorage:WaitForChild("EggGameRemotes")
+local notifyRemote = remotesFolder:WaitForChild("Notify")
+local coinsRemote = remotesFolder:WaitForChild("CoinsUpdate")
+local shopRemote = remotesFolder:WaitForChild("ShopUpdate")
+local carriedRemote = remotesFolder:WaitForChild("CarriedUpdate")
+local baseInfoRemote = remotesFolder:WaitForChild("BaseInfo")
+local buyRemote = remotesFolder:WaitForChild("BuyUpgrade")
+local getShopRemote = remotesFolder:WaitForChild("GetShop")
+
+-- ============================================================
+-- ПАЛИТРА И ШРИФТЫ
+-- ============================================================
+
+local C = {
+	Bg = Color3.fromRGB(22, 25, 35),
+	BgDeep = Color3.fromRGB(14, 16, 24),
+	Row = Color3.fromRGB(38, 43, 59),
+	RowHover = Color3.fromRGB(48, 55, 74),
+	Accent = Color3.fromRGB(255, 186, 64),
+	AccentSoft = Color3.fromRGB(255, 214, 130),
+	Good = Color3.fromRGB(96, 224, 144),
+	Bad = Color3.fromRGB(255, 116, 106),
+	Text = Color3.fromRGB(240, 244, 255),
+	Dim = Color3.fromRGB(160, 172, 196),
+	Stroke = Color3.fromRGB(66, 76, 100),
+}
+
+local FONT = Enum.Font.Gotham
+local FONT_BOLD = Enum.Font.GothamBold
+local FONT_BLACK = Enum.Font.GothamBlack
+
+-- ============================================================
+-- ХЕЛПЕРЫ
+-- ============================================================
+
+local function corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 12)
+	c.Parent = parent
+	return c
+end
+
+local function stroke(parent, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color or C.Stroke
+	s.Thickness = thickness or 1.5
+	s.Transparency = transparency or 0
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = parent
+	return s
+end
+
+local function pad(parent, all)
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, all)
+	p.PaddingBottom = UDim.new(0, all)
+	p.PaddingLeft = UDim.new(0, all)
+	p.PaddingRight = UDim.new(0, all)
+	p.Parent = parent
+	return p
+end
+
+local function label(parent, props)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Font = FONT
+	l.TextColor3 = C.Text
+	l.TextSize = 16
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	for key, value in pairs(props or {}) do
+		l[key] = value
+	end
+	l.Parent = parent
+	return l
+end
+
+local function button(parent, props)
+	local b = Instance.new("TextButton")
+	b.AutoButtonColor = false
+	b.BackgroundColor3 = C.Row
+	b.BorderSizePixel = 0
+	b.Font = FONT_BLACK
+	b.TextColor3 = C.Text
+	b.TextSize = 16
+	for key, value in pairs(props or {}) do
+		b[key] = value
+	end
+	b.Parent = parent
+	corner(b, 10)
+	return b
+end
+
+-- Красивое число: 1234 -> 1.2K
+local function fmt(n)
+	n = math.floor(tonumber(n) or 0)
+	if n >= 1e9 then
+		return string.format("%.2fB", n / 1e9)
+	elseif n >= 1e6 then
+		return string.format("%.2fM", n / 1e6)
+	elseif n >= 1e5 then
+		return string.format("%.1fK", n / 1e3)
+	end
+	return tostring(n)
+end
+
+local function getViewport()
+	local camera = workspace.CurrentCamera
+	if camera then
+		return camera.ViewportSize
+	end
+	return Vector2.new(1280, 720)
+end
+
+local function isMobile()
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end
+
+-- ============================================================
+-- КОРНЕВОЙ GUI
+-- ============================================================
+
+local existing = playerGui:FindFirstChild("EggGameUI")
+if existing then
+	existing:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "EggGameUI"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 10
+gui.Parent = playerGui
+
+-- ============================================================
+-- ВЕРХНЯЯ ЛЕВАЯ ПАНЕЛЬ: МОНЕТЫ
+-- ============================================================
+
+local coinPanel = Instance.new("Frame")
+coinPanel.Name = "CoinPanel"
+coinPanel.Position = UDim2.fromOffset(14, 14)
+coinPanel.Size = UDim2.fromOffset(220, 92)
+coinPanel.BackgroundColor3 = C.Bg
+coinPanel.BackgroundTransparency = 0.08
+coinPanel.BorderSizePixel = 0
+coinPanel.Parent = gui
+corner(coinPanel, 16)
+stroke(coinPanel, C.Accent, 2, 0.3)
+pad(coinPanel, 12)
+
+local coinRow = Instance.new("Frame")
+coinRow.Size = UDim2.new(1, 0, 0, 44)
+coinRow.BackgroundTransparency = 1
+coinRow.Parent = coinPanel
+
+label(coinRow, {
+	Text = "💰",
+	TextSize = 30,
+	Size = UDim2.fromOffset(40, 44),
+	TextXAlignment = Enum.TextXAlignment.Center,
+})
+
+local coinText = label(coinRow, {
+	Text = "0",
+	Font = FONT_BLACK,
+	TextSize = 32,
+	TextColor3 = C.Accent,
+	Position = UDim2.fromOffset(44, 0),
+	Size = UDim2.new(1, -44, 1, 0),
+	TextTruncate = Enum.TextTruncate.AtEnd,
+})
+
+local incomeText = label(coinPanel, {
+	Text = "+0 / сек",
+	Font = FONT_BOLD,
+	TextSize = 14,
+	TextColor3 = C.Dim,
+	Position = UDim2.new(0, 2, 1, -22),
+	Size = UDim2.new(1, -4, 0, 20),
+})
+
+-- ============================================================
+-- ВЕРХНЯЯ ПРАВАЯ ПАНЕЛЬ: РЮКЗАК И СКЛАД
+-- ============================================================
+
+local infoPanel = Instance.new("Frame")
+infoPanel.Name = "InfoPanel"
+infoPanel.AnchorPoint = Vector2.new(1, 0)
+infoPanel.Position = UDim2.new(1, -14, 0, 14)
+infoPanel.Size = UDim2.fromOffset(236, 132)
+infoPanel.BackgroundColor3 = C.Bg
+infoPanel.BackgroundTransparency = 0.08
+infoPanel.BorderSizePixel = 0
+infoPanel.Parent = gui
+corner(infoPanel, 16)
+stroke(infoPanel, C.Stroke, 1.5, 0.2)
+pad(infoPanel, 12)
+
+local carriedText = label(infoPanel, {
+	Text = "🎒 Рюкзак: 0 / 3",
+	Font = FONT_BLACK,
+	TextSize = 16,
+	Size = UDim2.new(1, 0, 0, 20),
+})
+
+local barBg = Instance.new("Frame")
+barBg.Position = UDim2.fromOffset(0, 24)
+barBg.Size = UDim2.new(1, 0, 0, 9)
+barBg.BackgroundColor3 = C.BgDeep
+barBg.BorderSizePixel = 0
+barBg.Parent = infoPanel
+corner(barBg, 5)
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.fromScale(0, 1)
+barFill.BackgroundColor3 = C.Accent
+barFill.BorderSizePixel = 0
+barFill.Parent = barBg
+corner(barFill, 5)
+
+local vaultText = label(infoPanel, {
+	Text = "🏦 Склад: 0",
+	Font = FONT_BOLD,
+	TextSize = 15,
+	Position = UDim2.fromOffset(0, 40),
+	Size = UDim2.new(1, 0, 0, 18),
+})
+
+local incomeBaseText = label(infoPanel, {
+	Text = "💰 Доход: 0 / сек",
+	Font = FONT,
+	TextSize = 14,
+	TextColor3 = C.Good,
+	Position = UDim2.fromOffset(0, 60),
+	Size = UDim2.new(1, 0, 0, 18),
+})
+
+local hintText = label(infoPanel, {
+	Text = "Собирай яйца на рынке",
+	Font = FONT,
+	TextSize = 12,
+	TextColor3 = C.Dim,
+	TextWrapped = true,
+	Position = UDim2.fromOffset(0, 82),
+	Size = UDim2.new(1, 0, 0, 32),
+})
+
+-- ============================================================
+-- КНОПКА МАГАЗИНА
+-- ============================================================
+
+local shopButton = button(gui, {
+	Name = "ShopButton",
+	Text = "🛒  МАГАЗИН",
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -18),
+	Size = UDim2.fromOffset(230, 54),
+	BackgroundColor3 = C.Accent,
+	TextColor3 = Color3.fromRGB(38, 26, 6),
+	TextSize = 20,
+})
+corner(shopButton, 14)
+stroke(shopButton, C.AccentSoft, 2, 0.15)
+
+local shopHint = label(shopButton, {
+	Text = "[B]",
+	Font = FONT_BOLD,
+	TextSize = 12,
+	TextColor3 = Color3.fromRGB(60, 44, 14),
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Position = UDim2.new(1, -34, 0, 6),
+	Size = UDim2.fromOffset(28, 16),
+})
+
+-- ============================================================
+-- УВЕДОМЛЕНИЯ
+-- ============================================================
+
+local toastArea = Instance.new("Frame")
+toastArea.Name = "Toasts"
+toastArea.AnchorPoint = Vector2.new(0.5, 0)
+toastArea.Position = UDim2.new(0.5, 0, 0, 120)
+toastArea.Size = UDim2.fromOffset(420, 250)
+toastArea.BackgroundTransparency = 1
+toastArea.Parent = gui
+
+local toastLayout = Instance.new("UIListLayout")
+toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
+toastLayout.Padding = UDim.new(0, 6)
+toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+toastLayout.Parent = toastArea
+
+local toastIndex = 0
+
+local function toast(text, color)
+	toastIndex += 1
+	local myIndex = toastIndex
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromOffset(370, 38)
+	frame.BackgroundColor3 = C.Bg
+	frame.BackgroundTransparency = 0.1
+	frame.BorderSizePixel = 0
+	frame.LayoutOrder = myIndex
+	frame.Parent = toastArea
+	corner(frame, 10)
+	stroke(frame, color or C.Accent, 2, 0.25)
+
+	local textLabel = label(frame, {
+		Text = tostring(text),
+		Font = FONT_BOLD,
+		TextSize = 14,
+		TextColor3 = color or C.Text,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	pad(frame, 6)
+
+	task.spawn(function()
+		task.wait(2.5)
+		local fade = TweenService:Create(frame, TweenInfo.new(0.3), {
+			BackgroundTransparency = 1,
+		})
+		TweenService:Create(textLabel, TweenInfo.new(0.3), {
+			TextTransparency = 1,
+		}):Play()
+		fade:Play()
+		fade.Completed:Wait()
+		frame:Destroy()
+	end)
+end
+
+notifyRemote.OnClientEvent:Connect(function(text, color)
+	toast(text, color)
+end)
+
+-- ============================================================
+-- МАГАЗИН
+-- ============================================================
+
+-- Оверлей — кнопка на весь экран: клик мимо панели закрывает магазин
+local shopOverlay = Instance.new("TextButton")
+shopOverlay.Name = "ShopOverlay"
+shopOverlay.Text = ""
+shopOverlay.AutoButtonColor = false
+shopOverlay.Size = UDim2.fromScale(1, 1)
+shopOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+shopOverlay.BackgroundTransparency = 0.5
+shopOverlay.BorderSizePixel = 0
+shopOverlay.Visible = false
+shopOverlay.ZIndex = 20
+shopOverlay.Parent = gui
+
+-- TextButton, а не Frame: так панель перехватывает клики
+-- и магазин не закрывается при нажатии на пустое место внутри него
+local shopPanel = Instance.new("TextButton")
+shopPanel.Name = "ShopPanel"
+shopPanel.Text = ""
+shopPanel.AutoButtonColor = false
+shopPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+shopPanel.Position = UDim2.fromScale(0.5, 0.5)
+shopPanel.BackgroundColor3 = C.Bg
+shopPanel.BorderSizePixel = 0
+shopPanel.ZIndex = 21
+shopPanel.Parent = shopOverlay
+corner(shopPanel, 20)
+stroke(shopPanel, C.Accent, 2, 0.25)
+
+local shopHeader = Instance.new("Frame")
+shopHeader.Size = UDim2.new(1, 0, 0, 74)
+shopHeader.BackgroundTransparency = 1
+shopHeader.ZIndex = 22
+shopHeader.Parent = shopPanel
+
+label(shopHeader, {
+	Text = "🛒  МАГАЗИН УЛУЧШЕНИЙ",
+	Font = FONT_BLACK,
+	TextSize = 21,
+	TextColor3 = C.Accent,
+	Position = UDim2.fromOffset(20, 14),
+	Size = UDim2.new(1, -110, 0, 26),
+	ZIndex = 22,
+})
+
+local shopCoinsText = label(shopHeader, {
+	Text = "💰 0",
+	Font = FONT_BLACK,
+	TextSize = 17,
+	TextColor3 = C.AccentSoft,
+	Position = UDim2.fromOffset(20, 42),
+	Size = UDim2.new(1, -110, 0, 20),
+	ZIndex = 22,
+})
+
+local closeButton = button(shopHeader, {
+	Text = "✕",
+	Size = UDim2.fromOffset(42, 42),
+	Position = UDim2.new(1, -56, 0, 14),
+	BackgroundColor3 = C.Bad,
+	TextColor3 = C.Text,
+	TextSize = 20,
+	ZIndex = 22,
+})
+corner(closeButton, 12)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Position = UDim2.fromOffset(14, 78)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 6
+scroll.ScrollBarImageColor3 = C.Accent
+scroll.CanvasSize = UDim2.new()
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+scroll.ZIndex = 22
+scroll.Parent = shopPanel
+
+local scrollLayout = Instance.new("UIListLayout")
+scrollLayout.Padding = UDim.new(0, 8)
+scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+scrollLayout.Parent = scroll
+
+local isShopOpen = false
+local cachedEntries = {}
+local cachedCoins = 0
+
+
+local function resizeShop()
+	local viewport = getViewport()
+	local width = math.min(560, viewport.X * 0.94)
+	local height = math.min(600, viewport.Y * 0.88)
+
+	shopPanel.Size = UDim2.fromOffset(width, height)
+	scroll.Size = UDim2.new(1, -28, 1, -92)
+end
+
+local function updateBuyButtonState(buyButton, entry, coins)
+	if not entry.Cost then
+		buyButton.Text = "МАКС"
+		buyButton.BackgroundColor3 = C.BgDeep
+		buyButton.TextColor3 = C.Dim
+		return false
+	end
+
+	buyButton.Text = "💰 " .. fmt(entry.Cost)
+
+	local affordable = coins >= entry.Cost
+	if affordable then
+		buyButton.BackgroundColor3 = C.Good
+		buyButton.TextColor3 = Color3.fromRGB(16, 40, 24)
+	else
+		buyButton.BackgroundColor3 = C.BgDeep
+		buyButton.TextColor3 = C.Dim
+	end
+
+	return affordable
+end
+
+local function renderShop(entries, coins)
+	cachedEntries = entries or {}
+	cachedCoins = coins or 0
+
+	shopCoinsText.Text = "💰 " .. fmt(cachedCoins)
+
+	-- Пересоздаём строки
+	for _, child in ipairs(scroll:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+
+	for index, entry in ipairs(cachedEntries) do
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1, -10, 0, 86)
+		row.BackgroundColor3 = C.Row
+		row.BackgroundTransparency = 0.05
+		row.BorderSizePixel = 0
+		row.LayoutOrder = index
+		row.ZIndex = 22
+		row.Parent = scroll
+		corner(row, 12)
+		stroke(row, C.Stroke, 1, 0.4)
+
+		label(row, {
+			Text = entry.Icon or "⭐",
+			TextSize = 30,
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.fromOffset(46, 86),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 22,
+		})
+
+		label(row, {
+			Text = entry.DisplayName,
+			Font = FONT_BLACK,
+			TextSize = 17,
+			Position = UDim2.fromOffset(60, 10),
+			Size = UDim2.new(1, -180, 0, 20),
+			ZIndex = 22,
+		})
+
+		label(row, {
+			Text = entry.Description,
+			Font = FONT,
+			TextSize = 12,
+			TextColor3 = C.Dim,
+			TextWrapped = true,
+			Position = UDim2.fromOffset(60, 30),
+			Size = UDim2.new(1, -180, 0, 30),
+			ZIndex = 22,
+		})
+
+		local levelText = string.format(
+			"Уровень %d / %d   •   сейчас: %.1f %s",
+			entry.Level,
+			entry.MaxLevel,
+			entry.Value,
+			entry.Unit or ""
+		)
+		if not entry.Cost then
+			levelText = string.format("Уровень %d / %d   •   МАКСИМУМ", entry.Level, entry.MaxLevel)
+		end
+
+		label(row, {
+			Text = levelText,
+			Font = FONT_BOLD,
+			TextSize = 12,
+			TextColor3 = entry.Cost and C.AccentSoft or C.Good,
+			Position = UDim2.fromOffset(60, 62),
+			Size = UDim2.new(1, -180, 0, 16),
+			ZIndex = 22,
+		})
+
+		local buyButton = button(row, {
+			Text = "—",
+			TextSize = 15,
+			Size = UDim2.fromOffset(104, 48),
+			Position = UDim2.new(1, -116, 0.5, -24),
+			BackgroundColor3 = C.BgDeep,
+			TextColor3 = C.Dim,
+			ZIndex = 23,
+		})
+
+		local affordable = updateBuyButtonState(buyButton, entry, cachedCoins)
+
+		if affordable then
+			buyButton.MouseButton1Click:Connect(function()
+				if buyButton:GetAttribute("busy") then
+					return
+				end
+				buyButton:SetAttribute("busy", true)
+
+				local previousText = buyButton.Text
+				buyButton.Text = "..."
+
+				local success, message = buyRemote:InvokeServer(entry.Name)
+				buyButton:SetAttribute("busy", false)
+
+				if success then
+					toast(message or "Куплено!", C.Good)
+
+					-- Обновляем строку сразу, не дожидаясь ответа сервера
+					local refreshed = getShopRemote:InvokeServer()
+					if refreshed then
+						cachedEntries = refreshed.Upgrades or cachedEntries
+						cachedCoins = refreshed.Coins or cachedCoins
+						renderShop(cachedEntries, cachedCoins)
+					end
+				else
+					toast(message or "Не получилось", C.Bad)
+					buyButton.Text = previousText
+					task.delay(0.6, function()
+						if buyButton.Parent then
+							updateBuyButtonState(buyButton, entry, cachedCoins)
+						end
+					end)
+				end
+			end)
+		end
+	end
+end
+
+-- Сервер присылает обновлённый магазин после покупки и периодически
+shopRemote.OnClientEvent:Connect(function(entries, coins)
+	cachedEntries = entries or cachedEntries
+	cachedCoins = tonumber(coins) or cachedCoins
+
+	if isShopOpen then
+		renderShop(cachedEntries, cachedCoins)
+	end
+end)
+
+local function openShop()
+	isShopOpen = true
+	shopOverlay.Visible = true
+	renderShop(cachedEntries, cachedCoins)
+
+	task.spawn(function()
+		local payload = getShopRemote:InvokeServer()
+		if isShopOpen and payload then
+			renderShop(payload.Upgrades, payload.Coins)
+		end
+	end)
+end
+
+local function closeShop()
+	isShopOpen = false
+	shopOverlay.Visible = false
+end
+
+shopButton.MouseEnter:Connect(function()
+	TweenService:Create(shopButton, TweenInfo.new(0.12), {
+		BackgroundColor3 = C.AccentSoft,
+	}):Play()
+end)
+
+shopButton.MouseLeave:Connect(function()
+	TweenService:Create(shopButton, TweenInfo.new(0.12), {
+		BackgroundColor3 = C.Accent,
+	}):Play()
+end)
+
+shopButton.MouseButton1Click:Connect(function()
+	if isShopOpen then
+		closeShop()
+	else
+		openShop()
+	end
+end)
+
+closeButton.MouseButton1Click:Connect(closeShop)
+
+shopOverlay.MouseButton1Click:Connect(closeShop)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.B then
+		if isShopOpen then
+			closeShop()
+		else
+			openShop()
+		end
+	elseif input.KeyCode == Enum.KeyCode.Escape and isShopOpen then
+		closeShop()
+	end
+end)
+
+-- ============================================================
+-- ОБНОВЛЕНИЕ ДАННЫХ
+-- ============================================================
+
+local displayedCoins = 0
+local targetCoins = 0
+
+RunService.RenderStepped:Connect(function(dt)
+	if displayedCoins ~= targetCoins then
+		local difference = targetCoins - displayedCoins
+		displayedCoins += difference * math.min(1, dt * 9)
+
+		if math.abs(targetCoins - displayedCoins) < 0.7 then
+			displayedCoins = targetCoins
+		end
+
+		coinText.Text = fmt(displayedCoins)
+	end
+end)
+
+coinsRemote.OnClientEvent:Connect(function(coins, income)
+	targetCoins = tonumber(coins) or 0
+
+	if income and income > 0 then
+		incomeBaseText.Text = string.format("💰 Доход: %.1f / сек", income)
+		incomeBaseText.TextColor3 = C.Good
+	else
+		incomeBaseText.Text = "💰 Доход: 0 / сек"
+		incomeBaseText.TextColor3 = C.Dim
+	end
+end)
+
+carriedRemote.OnClientEvent:Connect(function(count, capacity, types)
+	count = tonumber(count) or 0
+	capacity = tonumber(capacity) or 1
+
+	carriedText.Text = string.format("🎒 Рюкзак: %d / %d", count, capacity)
+
+	local ratio = capacity > 0 and math.clamp(count / capacity, 0, 1) or 0
+	TweenService:Create(barFill, TweenInfo.new(0.18), {
+		Size = UDim2.fromScale(ratio, 1),
+	}):Play()
+
+	if ratio >= 1 then
+		barFill.BackgroundColor3 = C.Bad
+	elseif ratio > 0.65 then
+		barFill.BackgroundColor3 = Color3.fromRGB(255, 206, 96)
+	else
+		barFill.BackgroundColor3 = C.Accent
+	end
+
+	if count == 0 then
+		hintText.Text = "Собирай яйца на рынке в центре"
+	elseif ratio >= 1 then
+		hintText.Text = "Рюкзак полон — беги на свою базу!"
+	else
+		hintText.Text = "Яйца крадут другие игроки — успей донести"
+	end
+end)
+
+-- Показываем маркер «МОЯ БАЗА» только над своей базой
+local currentBaseId = nil
+
+local function updateBaseMarker(baseId)
+	if baseId == currentBaseId then
+		return
+	end
+
+	local map = workspace:FindFirstChild("EggGame")
+	local basesFolder = map and map:FindFirstChild("Bases")
+
+	if not basesFolder then
+		-- Карта ещё не построена — повторим через секунду
+		task.delay(1, function()
+			updateBaseMarker(baseId)
+		end)
+		return
+	end
+
+	if basesFolder then
+		for _, model in ipairs(basesFolder:GetChildren()) do
+			if model:IsA("Model") then
+				local marker = model:FindFirstChild("MyBaseMarker")
+				if marker then
+					local markerGui = marker:FindFirstChild("MarkerGui")
+					local isMine = (model.Name == "Base_" .. tostring(baseId))
+					marker.Transparency = isMine and 0.35 or 1
+					if markerGui then
+						markerGui.Enabled = isMine
+					end
+				end
+			end
+		end
+	end
+
+	currentBaseId = baseId
+end
+
+baseInfoRemote.OnClientEvent:Connect(function(info)
+	if not info then
+		vaultText.Text = "🏦 Склада нет"
+		updateBaseMarker(nil)
+		return
+	end
+
+	vaultText.Text = string.format("🏦 Склад: %d / %d", info.VaultTotal or 0, info.Capacity or 0)
+
+	if info.Owners and info.Owners > 1 then
+		vaultText.Text ..= string.format("  (общая на %d)", info.Owners)
+	end
+
+	updateBaseMarker(info.BaseId)
+end)
+
+-- Подгоняем размеры под экран
+local function onViewportChanged()
+	local viewport = getViewport()
+	local scale = math.clamp(viewport.X / 1280, 0.82, 1)
+
+	coinPanel.Size = UDim2.fromOffset(220 * scale, 92 * scale)
+	infoPanel.Size = UDim2.fromOffset(236 * scale, 132 * scale)
+	shopButton.Size = UDim2.fromOffset(230 * scale, 54 * scale)
+
+	if isMobile() then
+		shopHint.Visible = false
+	else
+		shopHint.Visible = true
+	end
+
+	resizeShop()
+end
+
+onViewportChanged()
+
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportChanged)
+end
+
+-- ============================================================
+-- ПРИВЕТСТВИЕ
+-- ============================================================
+
+task.spawn(function()
+	task.wait(1.2)
+	toast("🥚 Собирай яйца! 🥚", C.Accent)
+	task.wait(2.6)
+	toast("Неси их на свою базу 🏦", C.Good)
+	task.wait(2.6)
+	toast("Магазин улучшений — клавиша B", C.AccentSoft)
+end)
+]]></ProtectedString>
+			<bool name="IsPlugin">false</bool>
+		</Properties>
+	</Item>
+	</Item>
+	</Item>
+</roblox>
