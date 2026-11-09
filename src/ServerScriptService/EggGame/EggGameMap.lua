@@ -235,12 +235,36 @@ function Map.makeEggPart(eggTypeName, parent)
 	shine.DepthMode = Enum.HighlightDepthMode.Occluded
 	shine.Parent = part
 
-	if eggTypeName == "Epic" or eggTypeName == "Legendary" then
+	--[[
+		Свет у редких яиц. Управляется флагом Glow в конфиге, а не хардкодом
+		по названию типа: добавил новый тип яйца — он сразу светится.
+		Яркость растёт с редкостью.
+	]]
+	if eggType.Glow then
+		local order = Config.EggOrder
+		local rank = 1
+		for index, name in ipairs(order) do
+			if name == eggTypeName then
+				rank = index
+				break
+			end
+		end
+
 		local light = Instance.new("PointLight")
 		light.Color = eggType.Color
-		light.Range = (eggTypeName == "Legendary") and 16 or 10
-		light.Brightness = (eggTypeName == "Legendary") and 2.2 or 1.2
+		light.Range = 8 + rank * 2.2
+		light.Brightness = 0.7 + rank * 0.25
 		light.Parent = part
+	end
+
+	-- Космическое яйцо переливается
+	if eggType.Rainbow then
+		local highlight = Instance.new("Highlight")
+		highlight.FillColor = eggType.Color
+		highlight.FillTransparency = 0.45
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.OutlineTransparency = 0.2
+		highlight.Parent = part
 	end
 
 	return part
@@ -1763,6 +1787,93 @@ local function buildShopBuilding(folder, origin, facing)
 end
 
 -- ============================================================
+-- ГНЁЗДА-КЛИКЕРЫ
+-- ============================================================
+
+--[[
+	Вместо разбросанных по карте яиц теперь стоят гнёзда.
+	Подошёл, зажал E — выбил яйцо. Серия кликов повышает шанс редкого.
+]]
+local function buildNests(folder)
+	local nestsCount = Config.NestsCount or 6
+	local radius = Config.MarketRadius - 12
+
+	for i = 1, nestsCount do
+		local angle = ((i - 1) / nestsCount) * math.pi * 2 + math.pi / nestsCount
+		local point = ringPoint(radius, angle, 0)
+
+		local model = Instance.new("Model")
+		model.Name = "Nest_" .. i
+		model.Parent = folder
+
+		-- Земляная насыпь
+		newDisc({
+			Name = "NestBase",
+			Radius = 5.5,
+			Height = 1.1,
+			Position = point + Vector3.new(0, 0.55, 0),
+			Color = PALETTE.Dirt,
+			Material = Enum.Material.Ground,
+			CanCollide = true,
+		}, model)
+
+		-- Венок из веток
+		for twig = 1, 8 do
+			local twigAngle = (twig / 8) * math.pi * 2
+			newPart({
+				Name = "Twig",
+				Size = Vector3.new(1.1, 0.55, 4.2),
+				CFrame = CFrame.new(
+					point.X + math.cos(twigAngle) * 3.6,
+					point.Y + 1.1,
+					point.Z + math.sin(twigAngle) * 3.6
+				) * CFrame.Angles(0, -twigAngle, math.rad(12)),
+				Color = PALETTE.WoodDark,
+				Material = Enum.Material.Wood,
+			}, model)
+		end
+
+		-- Яйцо в гнезде — по нему и «бьют»
+		local egg = Map.makeEggPart("Common", model)
+		egg.Name = "NestEgg"
+		egg.Size = Vector3.new(3.4, 3.4, 3.4)
+		egg.Position = point + Vector3.new(0, 2.6, 0)
+
+		-- Свечение, чтобы гнездо было видно
+		local glow = newDisc({
+			Name = "NestGlow",
+			Radius = 6.2,
+			Height = 0.2,
+			Position = point + Vector3.new(0, 1.15, 0),
+			Color = Color3.fromRGB(255, 235, 170),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			CanQuery = false,
+		}, model)
+		glow.Transparency = 0.55
+
+		-- Подсказка «нажми E»
+		local _, label = makeBillboard(
+			egg, "🥚 Жми E", Color3.fromRGB(255, 245, 200),
+			UDim2.fromOffset(220, 50), Vector3.new(0, 3.2, 0)
+		)
+
+		-- Сам промпт клика
+		local prompt = makePrompt(egg, "Выбить яйцо", "Гнездо", 16, 0)
+		prompt.Name = "HitPrompt"
+
+		-- Подставка для сбора
+		newPart({
+			Name = "NestSign",
+			Size = Vector3.new(0.8, 6, 0.8),
+			CFrame = CFrame.new(point + Vector3.new(0, 3, -5.5)),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.Wood,
+		}, model)
+	end
+end
+
+-- ============================================================
 -- ГЛАВНАЯ СБОРКА
 -- ============================================================
 
@@ -1812,6 +1923,8 @@ function Map.build()
 	local marketFolder = folder("Market")
 	local basesFolder = folder("Bases")
 	local natureFolder = folder("Nature")
+	local nestsFolder = folder("Nests")
+	local eventEggsFolder = folder("EventEggs")
 	local eggsFolder = folder("Eggs")
 	local vaultEggsFolder = folder("VaultEggs")
 	local carriedFolder = folder("Carried")
@@ -1837,6 +1950,7 @@ function Map.build()
 	local bases = step("Базы", function() return buildBases(basesFolder) end) or {}
 
 	step("Природа", function() return buildNature(natureFolder) end)
+	step("Гнёзда", function() return buildNests(nestsFolder) end)
 
 	-- Магазин на входе с рынка, лицом к центру
 	local shopData = step("Магазин", function()
@@ -1861,6 +1975,8 @@ function Map.build()
 		Market = marketFolder,
 		BasesFolder = basesFolder,
 		Nature = natureFolder,
+		Nests = nestsFolder,
+		EventEggs = eventEggsFolder,
 		Eggs = eggsFolder,
 		VaultEggs = vaultEggsFolder,
 		Carried = carriedFolder,

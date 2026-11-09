@@ -717,7 +717,164 @@ function buildPreview() {
   const { buildShop } = require("./build-shop.js");
   const shop = buildShop({ x: 0, y: 0, z: -MARKET_R - 12 }, 0);
 
-  return folderXml("EggGamePreview", [terrain, market, bases, nature, shop]);
+  // Гнёзда-кликеры: вместо разбросанных яиц
+  const nests = [];
+  const nestCount = 6;
+  const nestRadius = MARKET_R - 12;
+
+  for (let i = 1; i <= nestCount; i++) {
+    const a = ((i - 1) / nestCount) * Math.PI * 2 + Math.PI / nestCount;
+    const px = Math.cos(a) * nestRadius;
+    const pz = Math.sin(a) * nestRadius;
+
+    // земляная насыпь
+    nests.push(partXml({
+      name: "Nest_" + i, size: [1.1, 11, 11],
+      position: [px, 0.55, pz], rotation: [0, 0, Math.PI / 2],
+      color: PALETTE.Dirt, material: MATERIAL.Ground,
+      shape: "Cylinder", canCollide: true,
+    }));
+
+    // яйцо в гнезде
+    nests.push(partXml({
+      name: "NestEgg", size: [3.4, 3.4, 3.4],
+      position: [px, 2.6, pz],
+      color: [255, 245, 220], material: MATERIAL.SmoothPlastic,
+      shape: "Ball",
+    }));
+
+    // свечение
+    nests.push(partXml({
+      name: "NestGlow", size: [0.2, 12.4, 12.4],
+      position: [px, 1.15, pz], rotation: [0, 0, Math.PI / 2],
+      color: [255, 235, 170], material: MATERIAL.Neon,
+      transparency: 0.55, shape: "Cylinder",
+    }));
+
+    // ветки
+    for (let t = 0; t < 8; t++) {
+      const ta = (t / 8) * Math.PI * 2;
+      nests.push(partXml({
+        name: "Twig", size: [1.1, 0.55, 4.2],
+        position: [px + Math.cos(ta) * 3.6, 1.1, pz + Math.sin(ta) * 3.6],
+        rotation: [0, -ta, 0.21],
+        color: PALETTE.WoodDark, material: MATERIAL.Wood,
+      }));
+    }
+  }
+
+  const nestFolder = folderXml("Nests", nests);
+
+  // ===================== МЕЛКИЕ ДЕТАЛИ =====================
+  // Мелочь, из-за которой мир перестаёт выглядеть пустым
+  const details = [];
+
+  // Грибы в лесу
+  for (let i = 0; i < 30; i++) {
+    const ang = rand() * Math.PI * 2;
+    const dist = MARKET_R + 20 + rand() * (BASE_RING - MARKET_R - 30);
+    const mx = Math.cos(ang) * dist;
+    const mz = Math.sin(ang) * dist;
+
+    details.push(partXml({
+      name: "MushroomStem", size: [0.6, 1.6, 0.6],
+      position: [mx, 0.9, mz],
+      color: [245, 240, 225], material: MATERIAL.SmoothPlastic,
+    }));
+    details.push(partXml({
+      name: "MushroomCap", size: [1.9, 0.9, 1.9],
+      position: [mx, 1.9, mz],
+      color: rand() > 0.5 ? [232, 84, 76] : [250, 190, 80],
+      material: MATERIAL.SmoothPlastic, shape: "Ball",
+    }));
+  }
+
+  // Крупные валуны с мхом
+  for (let i = 0; i < 22; i++) {
+    const ang = rand() * Math.PI * 2;
+    const dist = MARKET_R + 30 + rand() * (BASE_RING - MARKET_R - 40);
+    const rx = Math.cos(ang) * dist;
+    const rz = Math.sin(ang) * dist;
+    const rr = 3 + rand() * 4;
+
+    details.push(partXml({
+      name: "Boulder", size: [rr * 2, rr * 1.7, rr * 2],
+      position: [rx, rr * 0.7, rz],
+      rotation: [rand() * 0.4, rand() * Math.PI, rand() * 0.4],
+      color: mixColor(PALETTE.Rock, PALETTE.Stone, rand()),
+      material: MATERIAL.Rock, shape: "Ball", canCollide: true,
+    }));
+    // мох сверху
+    details.push(partXml({
+      name: "Moss", size: [rr * 1.4, 0.5, rr * 1.4],
+      position: [rx, rr * 1.45, rz],
+      color: mixColor(PALETTE.LeafDark, PALETTE.LeafMid, rand()),
+      material: MATERIAL.Grass, shape: "Ball",
+    }));
+  }
+
+  // Кувшинки и камыш у пруда
+  for (let i = 0; i < 12; i++) {
+    const ang = rand() * Math.PI * 2;
+    const d = rand() * 14;
+    const lx = -BASE_RING - 8 + Math.cos(ang) * d;
+    const lz = BASE_RING - 30 + Math.sin(ang) * d;
+
+    if (i < 7) {
+      details.push(partXml({
+        name: "LilyPad", size: [3, 0.25, 3],
+        position: [lx, 1.35, lz],
+        color: mixColor(PALETTE.LeafMid, PALETTE.LeafDark, rand()),
+        material: MATERIAL.Grass, shape: "Ball",
+      }));
+    } else {
+      details.push(partXml({
+        name: "Reed", size: [0.35, 5 + rand() * 3, 0.35],
+        position: [lx, 3.2, lz],
+        color: PALETTE.LeafDark, material: MATERIAL.Grass,
+      }));
+    }
+  }
+
+  // Тропинки-камушки между базами
+  for (let i = 0; i < 120; i++) {
+    const ang = rand() * Math.PI * 2;
+    const dist = MARKET_R + 10 + rand() * (BASE_RING - MARKET_R - 20);
+    const sx = Math.cos(ang) * dist + (rand() - 0.5) * 8;
+    const sz = Math.sin(ang) * dist + (rand() - 0.5) * 8;
+
+    details.push(partXml({
+      name: "Pebble", size: [0.7 + rand() * 0.8, 0.4, 0.7 + rand() * 0.8],
+      position: [sx, 0.25, sz],
+      rotation: [0, rand() * Math.PI, 0],
+      color: mixColor(PALETTE.Stone, PALETTE.SandDark, rand()),
+      material: MATERIAL.Rock, shape: "Ball",
+    }));
+  }
+
+  // Фонари-столбы вдоль дорог (светящиеся шары)
+  for (let i = 0; i < 16; i++) {
+    const ang = (i / 16) * Math.PI * 2;
+    const dist = MARKET_R + 6;
+    const lx = Math.cos(ang) * dist;
+    const lz = Math.sin(ang) * dist;
+
+    details.push(partXml({
+      name: "PathLampPost", size: [0.5, 9, 0.5],
+      position: [lx, 4.5, lz],
+      color: PALETTE.WoodDark, material: MATERIAL.Wood,
+    }));
+    details.push(partXml({
+      name: "PathLamp", size: [1.5, 1.5, 1.5],
+      position: [lx, 9.4, lz],
+      color: PALETTE.LanternGlow, material: MATERIAL.Neon,
+      shape: "Ball",
+    }));
+  }
+
+  const detailFolder = folderXml("Details", details);
+
+  return folderXml("EggGamePreview", [terrain, market, bases, nature, shop, nestFolder, detailFolder, folderXml("EventEggs", [])]);
 }
 
 module.exports = { buildPreview, PALETTE, MATERIAL, partXml, folderXml, colorInt, escapeXml };

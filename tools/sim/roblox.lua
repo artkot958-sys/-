@@ -380,6 +380,11 @@ InstanceMeta.__index = function(self, key)
 			end
 			return copy
 		end
+	elseif key == "GetPivot" then
+		return function(obj)
+			local props = rawget(obj, "_props")
+			return props.CFrame or M.CFrame.new()
+		end
 	elseif key == "GetDescendants" then
 		return function(obj)
 			local out = {}

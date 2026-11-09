@@ -296,7 +296,9 @@ end
 
 local failed = false
 failed = not check("Terrain", 5) or failed
-failed = not check("Eggs", 5) or failed
+-- Яйца на карте больше не разбрасываются: их добывают кликером
+failed = not check("Nests", 6) or failed
+failed = not check("EventEggs", 0) or failed
 failed = not check("Bases", 16) or failed
 failed = not check("Nature", 10) or failed
 
@@ -557,6 +559,79 @@ assertions[#assertions + 1] = { "третий остался при своей �
 
 print("✓ База №2: владельцев " .. tostring(#ctx.bases[2].Owners))
 print("✓ Игрок при базе: " .. tostring(Core.getBaseForPlayerFor(third).Id))
+
+-- ============ КЛИКЕР ============
+print("")
+print("════════ КЛИКЕР ════════")
+
+-- Ставим игрока рядом с первым гнездом
+local nest1 = ctx.nests[1]
+assertions[#assertions + 1] = { "гнёзд на карте: " .. #ctx.nests, #ctx.nests >= 6 }
+
+local fakeRoot = fakeChar:FindFirstChild("HumanoidRootPart")
+fakeRoot.CFrame = CFrame.new(nest1.Position + Vector3.new(2, 3, 0))
+
+local beforeCount = Core.getCarriedCount(fakePlayer)
+local hitOk, hitType = Core.hitNest(fakePlayer, 1)
+local afterCount = Core.getCarriedCount(fakePlayer)
+
+assertions[#assertions + 1] = { "клик по гнезду сработал (" .. tostring(hitType) .. ")", hitOk == true }
+assertions[#assertions + 1] = { "яйцо попало в рюкзак", afterCount >= beforeCount }
+assertions[#assertions + 1] = { "комбо засчитано (" .. tostring(Core.getCombo(fakePlayer)) .. ")", Core.getCombo(fakePlayer) >= 1 }
+
+-- Далеко от гнезда клик не работает
+fakeRoot.CFrame = CFrame.new(500, 3, 500)
+local farOk, farMsg = Core.hitNest(fakePlayer, 1)
+assertions[#assertions + 1] = { "издалека клик не проходит (" .. tostring(farMsg) .. ")", farOk == false }
+
+fakeRoot.CFrame = CFrame.new(nest1.Position + Vector3.new(2, 3, 0))
+
+-- ============ ИВЕНТЫ ============
+print("")
+print("════════ ИВЕНТЫ ════════")
+
+assertions[#assertions + 1] = { "список ивентов в конфиге: " .. #Config.Events, #Config.Events >= 4 }
+assertions[#assertions + 1] = { "интервал ивента 120 сек", Config.EventInterval == 120 }
+
+-- ============ ДОНАТ ============
+print("")
+print("════════ ДОНАТ ════════")
+
+assertions[#assertions + 1] = { "товаров в донат-магазине: " .. #Config.Donations, #Config.Donations >= 5 }
+
+local coinsBefore = Data.getCoins(fakePlayer)
+local chest = Core.findDonation("CoinChest")
+assertions[#assertions + 1] = { "товар «Сундук монет» найден", chest ~= nil }
+
+if chest then
+  Core.grantDonation(fakePlayer, chest)
+  local coinsAfter = Data.getCoins(fakePlayer)
+  assertions[#assertions + 1] = {
+    "монеты начислены: +" .. tostring(coinsAfter - coinsBefore),
+    coinsAfter > coinsBefore,
+  }
+end
+
+-- Буст от доната увеличивает доход
+local boostItem = Core.findDonation("PermanentBoost")
+if boostItem then
+  local base = Core.getBaseForPlayerFor(fakePlayer)
+  if base then
+    base.Vault = { Legendary = 10 }
+    base.VaultTotal = 10
+    local beforeBoost = Core.getBaseIncomePerSecond(base, fakePlayer)
+    Core.grantDonation(fakePlayer, boostItem)
+    local afterBoost = Core.getBaseIncomePerSecond(base, fakePlayer)
+    assertions[#assertions + 1] = {
+      "вечный буст поднял доход x" .. string.format("%.2f", afterBoost / math.max(beforeBoost, 0.0001)),
+      afterBoost > beforeBoost,
+    }
+  end
+end
+
+-- Товар без ProductId вежливо отказывает, не ломаясь
+local buyOk, buyMsg = Core.purchaseDonation(fakePlayer, "CosmicBundle")
+assertions[#assertions + 1] = { "покупка без ProductId отклонена (" .. tostring(buyMsg) .. ")", buyOk == false }
 
 -- Итог по утверждениям
 print("")

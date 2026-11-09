@@ -9,11 +9,36 @@ local Config = {}
 
 -- ===================== ЯЙЦА =====================
 
--- Сколько яиц одновременно лежит на рынке в центре карты
-Config.MaxGroundEggs = 40
+--[[
+	СИСТЕМА ПОЛУЧЕНИЯ ЯИЦ
+	Раньше яйца просто валялись по карте. Теперь их добывают кликером:
+	подходишь к гнезду и жмёшь E (или тапаешь в интерфейсе).
+]]
+Config.MaxGroundEggs = 0   -- разбросанные яйца отключены
+Config.SpawnInterval = 999 -- (не используется, оставлено для совместимости)
 
--- Как часто (в секундах) рынок пополняется новым яйцом
-Config.SpawnInterval = 0.85
+-- ===================== КЛИКЕР =====================
+
+-- Сколько гнёзд-кликеров стоит на рынке
+Config.NestsCount = 6
+
+-- Удары по гнезду: сколько нужно кликнуть, чтобы выпало яйцо
+Config.NestHitsPerEgg = 1
+
+-- Пауза между кликами по одному гнезду (секунды)
+Config.NestCooldown = 0.12
+
+-- Радиус, в котором работает клик по гнезду
+Config.NestRange = 18
+
+-- Бонус за серию кликов подряд (комбо)
+Config.ComboWindow = 1.6      -- сколько ждать между кликами, чтобы серия жила
+Config.ComboStep = 0.06       -- +6% к шансу редкого за каждый клик серии
+Config.ComboMax = 2.5         -- максимум +150%
+
+-- Шанс, что клик выбьет яйцо выше обычного (сверх обычного веса)
+Config.CritChance = 0.05
+Config.CritMultiplier = 3
 
 -- Сколько секунд яйца в рюкзаке нельзя украсть сразу после подбора
 -- (чтобы вор не отбирал только что собранное)
@@ -31,40 +56,90 @@ Config.MaxVisibleStack = 15    -- больше не рисуем (остальн
 Config.CarriedEggScale = 0.7
 Config.VaultEggScale = 0.55
 
--- Типы яиц: Weight — шанс выпадения, Value — цена и «сила» дохода
+--[[
+	Типы яиц. Weight — относительный шанс, Value — цена и сила дохода.
+	Чем реже — тем дороже и ярче. Раскраска идёт по полю Color.
+]]
 Config.EggTypes = {
 	Common = {
 		DisplayName = "Обычное",
-		Weight = 70,
+		Weight = 5000,
 		Value = 1,
 		Color = Color3.fromRGB(255, 245, 220),
 		Size = Vector3.new(2.1, 2.1, 2.1),
 		Rarity = Color3.fromRGB(235, 235, 235),
+		Glow = false,
+	},
+	Uncommon = {
+		DisplayName = "Необычное",
+		Weight = 2600,
+		Value = 3,
+		Color = Color3.fromRGB(140, 235, 140),
+		Size = Vector3.new(2.15, 2.15, 2.15),
+		Rarity = Color3.fromRGB(120, 220, 120),
+		Glow = false,
 	},
 	Rare = {
 		DisplayName = "Редкое",
-		Weight = 20,
-		Value = 5,
+		Weight = 1400,
+		Value = 8,
 		Color = Color3.fromRGB(110, 190, 255),
 		Size = Vector3.new(2.2, 2.2, 2.2),
 		Rarity = Color3.fromRGB(90, 170, 255),
+		Glow = false,
 	},
 	Epic = {
 		DisplayName = "Эпическое",
-		Weight = 8,
-		Value = 20,
+		Weight = 700,
+		Value = 25,
 		Color = Color3.fromRGB(185, 115, 255),
 		Size = Vector3.new(2.35, 2.35, 2.35),
 		Rarity = Color3.fromRGB(170, 90, 255),
+		Glow = true,
 	},
 	Legendary = {
 		DisplayName = "Легендарное",
-		Weight = 2,
-		Value = 100,
+		Weight = 220,
+		Value = 90,
 		Color = Color3.fromRGB(255, 190, 40),
 		Size = Vector3.new(2.6, 2.6, 2.6),
 		Rarity = Color3.fromRGB(255, 170, 30),
+		Glow = true,
 	},
+	Mythic = {
+		DisplayName = "Мифическое",
+		Weight = 60,
+		Value = 350,
+		Color = Color3.fromRGB(255, 90, 160),
+		Size = Vector3.new(2.8, 2.8, 2.8),
+		Rarity = Color3.fromRGB(255, 70, 140),
+		Glow = true,
+	},
+	Divine = {
+		DisplayName = "Божественное",
+		Weight = 15,
+		Value = 1500,
+		Color = Color3.fromRGB(120, 255, 250),
+		Size = Vector3.new(3.0, 3.0, 3.0),
+		Rarity = Color3.fromRGB(90, 245, 240),
+		Glow = true,
+	},
+	Cosmic = {
+		DisplayName = "Космическое",
+		Weight = 4,
+		Value = 7500,
+		Color = Color3.fromRGB(180, 130, 255),
+		Size = Vector3.new(3.2, 3.2, 3.2),
+		Rarity = Color3.fromRGB(200, 150, 255),
+		Glow = true,
+		Rainbow = true,
+	},
+}
+
+-- Порядок от частого к редкому (для интерфейса и ивентов)
+Config.EggOrder = {
+	"Common", "Uncommon", "Rare", "Epic",
+	"Legendary", "Mythic", "Divine", "Cosmic",
 }
 
 -- ===================== КАРТА =====================
@@ -177,6 +252,141 @@ Config.Upgrades = {
 		BaseValue = 1,
 		PerLevel = 0.2,
 		Unit = "x",
+	},
+}
+
+-- ===================== ИВЕНТЫ =====================
+--[[
+	Каждые EventInterval секунд на рынке происходит событие.
+	Игроки, которые в нём поучаствуют, получают яйца РЕДКЕЕ обычных.
+]]
+Config.EventInterval = 120      -- период между ивентами (2 минуты)
+Config.EventDuration = 25       -- сколько ивент активен
+Config.EventWarnBefore = 8      -- предупреждение за N секунд до старта
+
+Config.Events = {
+	{
+		Id = "GoldenRain",
+		Name = "Золотой дождь",
+		Description = "На рынке падают легендарные яйца — успей подобрать!",
+		Color = Color3.fromRGB(255, 200, 60),
+		EggsCount = 14,
+		MinType = "Epic",
+		MaxType = "Legendary",
+	},
+	{
+		Id = "MeteorShower",
+		Name = "Метеоритный дождь",
+		Description = "С неба валятся мифические яйца",
+		Color = Color3.fromRGB(255, 120, 90),
+		EggsCount = 10,
+		MinType = "Legendary",
+		MaxType = "Mythic",
+	},
+	{
+		Id = "DivineGift",
+		Name = "Дар богов",
+		Description = "Божественные яйца ждут на площади",
+		Color = Color3.fromRGB(120, 255, 250),
+		EggsCount = 6,
+		MinType = "Mythic",
+		MaxType = "Divine",
+	},
+	{
+		Id = "CosmicRift",
+		Name = "Космический разлом",
+		Description = "Редчайший шанс — космические яйца!",
+		Color = Color3.fromRGB(190, 140, 255),
+		EggsCount = 3,
+		MinType = "Divine",
+		MaxType = "Cosmic",
+	},
+	{
+		Id = "EggRush",
+		Name = "Яичная лихорадка",
+		Description = "Клик по гнёздам даёт втрое больше яиц!",
+		Color = Color3.fromRGB(255, 170, 220),
+		EggsCount = 0,
+		Multiplier = 3,
+		MinType = "Rare",
+		MaxType = "Epic",
+	},
+}
+
+-- ===================== ДОНАТ (РОБУКСЫ) =====================
+--[[
+	Покупки за Robux через MarketplaceService.
+
+	ВАЖНО: чтобы они реально работали, нужны Developer Product ID,
+	созданные в твоём опыте (Monetization -> Developer Products).
+	Пока ID не задан, вкладка показывает товары, а покупка вежливо
+	отказывает с подсказкой — игра не ломается.
+]]
+Config.Donations = {
+	{
+		Id = "StarterPack",
+		Name = "Набор новичка",
+		Icon = "🎁",
+		Description = "2500 монет + 5 легендарных яиц",
+		Price = 25,
+		ProductId = 0,
+		Coins = 2500,
+		Eggs = { Type = "Legendary", Count = 5 },
+		Color = Color3.fromRGB(120, 220, 150),
+	},
+	{
+		Id = "CoinChest",
+		Name = "Сундук монет",
+		Icon = "💰",
+		Description = "15000 монет сразу на склад",
+		Price = 75,
+		ProductId = 0,
+		Coins = 15000,
+		Color = Color3.fromRGB(255, 205, 90),
+	},
+	{
+		Id = "MythicEgg",
+		Name = "Мифическое яйцо",
+		Icon = "🔮",
+		Description = "Гарантированное мифическое яйцо",
+		Price = 49,
+		ProductId = 0,
+		Coins = 0,
+		Eggs = { Type = "Mythic", Count = 1 },
+		Color = Color3.fromRGB(255, 90, 160),
+	},
+	{
+		Id = "DivineBlessing",
+		Name = "Благословение",
+		Icon = "✨",
+		Description = "Божественное яйцо + 5000 монет",
+		Price = 149,
+		ProductId = 0,
+		Coins = 5000,
+		Eggs = { Type = "Divine", Count = 1 },
+		Color = Color3.fromRGB(120, 255, 250),
+	},
+	{
+		Id = "CosmicBundle",
+		Name = "Космический набор",
+		Icon = "🌌",
+		Description = "Космическое яйцо + 25000 монет",
+		Price = 499,
+		ProductId = 0,
+		Coins = 25000,
+		Eggs = { Type = "Cosmic", Count = 1 },
+		Color = Color3.fromRGB(180, 130, 255),
+	},
+	{
+		Id = "PermanentBoost",
+		Name = "Вечный буст",
+		Icon = "🚀",
+		Description = "Навсегда +50% к доходу базы",
+		Price = 299,
+		ProductId = 0,
+		Coins = 0,
+		Boost = 0.5,
+		Color = Color3.fromRGB(90, 200, 255),
 	},
 }
 

@@ -16,6 +16,7 @@
 ]]
 
 local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -107,21 +108,67 @@ local function getVaultCapacity(base)
 	return best
 end
 
-local function pickEggType()
-	local weightSum = 0
-	for _, eggType in pairs(Config.EggTypes) do
-		weightSum += eggType.Weight
+--[[
+	Выбор типа яйца по весам.
+
+	luck — множитель «удачи»: >1 повышает шанс редких яиц.
+	Как работает: вес каждого яйца умножается на luck^(индекс редкости),
+	поэтому редкие растут быстрее обычных. При luck=1 всё как в конфиге.
+]]
+local function pickEggType(luck)
+	luck = luck or 1
+
+	local order = Config.EggOrder
+	local weights = {}
+	local total = 0
+
+	for index, name in ipairs(order) do
+		local eggType = Config.EggTypes[name]
+		if eggType then
+			-- Редкие яйца получают больший буст от удачи
+			local boost = luck ^ (index - 1)
+			local weight = eggType.Weight * boost
+			weights[name] = weight
+			total += weight
+		end
 	end
 
-	local roll = RNG:NextNumber() * weightSum
-	for name, eggType in pairs(Config.EggTypes) do
-		roll -= eggType.Weight
+	if total <= 0 then
+		return "Common"
+	end
+
+	local roll = RNG:NextNumber() * total
+	for _, name in ipairs(order) do
+		local weight = weights[name] or 0
+		roll -= weight
 		if roll <= 0 then
 			return name
 		end
 	end
 
 	return "Common"
+end
+
+-- Выбор яйца между двумя типами (для ивентов)
+local function pickEggBetween(minType, maxType)
+	local order = Config.EggOrder
+	local minIndex, maxIndex = 1, #order
+
+	for index, name in ipairs(order) do
+		if name == minType then
+			minIndex = index
+		end
+		if name == maxType then
+			maxIndex = index
+		end
+	end
+
+	if maxIndex < minIndex then
+		minIndex, maxIndex = maxIndex, minIndex
+	end
+
+	local name = order[RNG:NextInteger(minIndex, maxIndex)]
+	return name or "Common"
 end
 
 -- ============================================================
@@ -180,13 +227,18 @@ local function getBaseIncomePerSecond(base, player)
 	local ownerCount = math.max(1, #base.Owners)
 	local rate = vaultValueOf(base) * Config.IncomeRate
 
+	-- Буст от донат-покупки прибавляется к множителю дохода
+	local function boostOf(owner)
+		return 1 + (state.boostPerPlayer[owner] or 0)
+	end
+
 	if player then
-		return (rate * Data.getUpgradeValue(player, "Income")) / ownerCount
+		return (rate * Data.getUpgradeValue(player, "Income") * boostOf(player)) / ownerCount
 	end
 
 	local total = 0
 	for _, owner in ipairs(base.Owners) do
-		total += (rate * Data.getUpgradeValue(owner, "Income")) / ownerCount
+		total += (rate * Data.getUpgradeValue(owner, "Income") * boostOf(owner)) / ownerCount
 	end
 	return total
 end
@@ -453,6 +505,448 @@ function Core.releaseBase(player, keepPreference)
 			data.BaseId = nil
 		end
 	end
+end
+
+-- ============================================================
+-- ДОНАТ (ПОКУПКИ ЗА ROBUX)
+-- ============================================================
+
+-- Находим товар по Developer Product ID
+local function findDonationByProductId(productId)
+	for _, item in ipairs(Config.Donations) do
+		if item.ProductId == productId and productId > 0 then
+			return item
+		end
+	end
+	return nil
+end
+
+-- Находим товар по строковому Id (для интерфейса)
+function Core.findDonation(itemId)
+	for _, item in ipairs(Config.Donations) do
+		if item.Id == itemId then
+			return item
+		end
+	end
+	return nil
+end
+
+-- Выдаём содержимое покупки
+function Core.grantDonation(player, item)
+	if not item then
+		return false
+	end
+
+	if item.Coins and item.Coins > 0 then
+		Data.addCoins(player, item.Coins)
+		Core.syncCoins(player)
+	end
+
+	if item.Eggs then
+		-- Яйца доната идут сразу в рюкзак, даже если он переполнен
+		local carried = getCarried(player)
+		local capacity = getBackpackCapacity(player)
+
+		for _ = 1, item.Eggs.Count do
+			local part = Map.makeEggPart(item.Eggs.Type, state.map.Carried)
+			part.Size = part.Size * Config.CarriedEggScale
+			part.Anchored = true
+
+			table.insert(carried.Parts, part)
+			carried.Types[item.Eggs.Type] = (carried.Types[item.Eggs.Type] or 0) + 1
+			carried.Count += 1
+		end
+
+		-- Если рюкзак переполнен — лишнее уходит в склад на базе
+		if carried.Count > capacity then
+			Core.startDeposit(player)
+		end
+
+		refreshStack(player)
+		Core.syncCarried(player)
+	end
+
+	if item.Boost then
+		state.boostPerPlayer[player] = (state.boostPerPlayer[player] or 0) + item.Boost
+		Core.syncCoins(player)
+	end
+
+	Core.notify(player, string.format("%s %s — получено!", item.Icon or "🎁", item.Name),
+		Color3.fromRGB(140, 255, 180))
+
+	return true
+end
+
+--[[
+	Покупка за Robux.
+
+	Если ProductId = 0, значит товар ещё не создан в опыте —
+	вежливо отказываем и подсказываем, что делать. Игра не ломается.
+]]
+function Core.purchaseDonation(player, itemId)
+	local item = Core.findDonation(itemId)
+	if not item then
+		return false, "Товар не найден"
+	end
+
+	if not item.ProductId or item.ProductId == 0 then
+		Core.notify(player,
+			"Этот товар ещё не настроен. Создай Developer Product в Roblox и вставь ID в Config.Donations.",
+			Color3.fromRGB(255, 200, 120))
+		return false, "Товар не настроен (нужен Developer Product ID)"
+	end
+
+	local ok, err = pcall(function()
+		MarketplaceService:PromptProductPurchase(player, item.ProductId)
+	end)
+
+	if not ok then
+		warn("[EggGame] Ошибка покупки: " .. tostring(err))
+		return false, "Не удалось открыть окно покупки"
+	end
+
+	return true, "Открываю окно покупки..."
+end
+
+-- Список товаров для интерфейса
+function Core.getDonationList()
+	local list = {}
+	for _, item in ipairs(Config.Donations) do
+		table.insert(list, {
+			Id = item.Id,
+			Name = item.Name,
+			Icon = item.Icon,
+			Description = item.Description,
+			Price = item.Price,
+			Color = item.Color,
+			Configured = (item.ProductId or 0) > 0,
+		})
+	end
+	return list
+end
+
+-- Обработчик чеков Roblox (обязателен для Developer Products)
+function Core.setupMarketplace()
+	MarketplaceService.ProcessReceipt = function(receiptInfo)
+		local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
+		if not player then
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		local item = findDonationByProductId(receiptInfo.ProductId)
+		if not item then
+			warn("[EggGame] Неизвестный ProductId: " .. tostring(receiptInfo.ProductId))
+			-- Возвращаем NotProcessedYet — Roblox попробует позже
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		local ok, err = pcall(function()
+			Core.grantDonation(player, item)
+		end)
+
+		if not ok then
+			warn("[EggGame] Не удалось выдать покупку: " .. tostring(err))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		print(string.format("[EggGame] %s купил %s за %d R$",
+			player.Name, item.Name, item.Price or 0))
+
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+end
+
+-- ============================================================
+-- ИВЕНТЫ (каждые 2 минуты)
+-- ============================================================
+
+state.currentEvent = nil
+state.eventEggs = {}
+
+local function broadcast(text, color)
+	for _, player in ipairs(Players:GetPlayers()) do
+		Core.notify(player, text, color)
+	end
+end
+
+local function clearEventEggs()
+	for _, part in ipairs(state.eventEggs) do
+		if part and part.Parent then
+			part:Destroy()
+		end
+	end
+	state.eventEggs = {}
+end
+
+-- Раскладываем яйца ивента по рынку
+local function spawnEventEggs(event)
+	local mapData = state.map
+	local folder = mapData and mapData.EventEggs
+	if not folder then
+		return
+	end
+
+	clearEventEggs()
+
+	for i = 1, (event.EggsCount or 0) do
+		local offset = Map.randomPointInDisc(Config.MarketRadius - 8)
+		local eggTypeName = pickEggBetween(event.MinType, event.MaxType)
+		local eggType = Config.EggTypes[eggTypeName]
+
+		local part = Map.makeEggPart(eggTypeName, folder)
+		part.Name = "EventEgg"
+		part.Position = Vector3.new(offset.X, 3.4 + (eggType.Size.Y or 2) * 0.4, offset.Z)
+		part.Anchored = true
+
+		-- Светящаяся подложка, чтобы яйцо было видно издалека
+		local halo = Instance.new("Part")
+		halo.Name = "Halo"
+		halo.Shape = Enum.PartType.Ball
+		halo.Size = Vector3.new(7, 7, 7)
+		halo.Position = part.Position
+		halo.Anchored = true
+		halo.CanCollide = false
+		halo.CanQuery = false
+		halo.Material = Enum.Material.Neon
+		halo.Color = event.Color or eggType.Color
+		halo.Transparency = 0.55
+		halo.Parent = folder
+
+		table.insert(state.eventEggs, part)
+		table.insert(state.eventEggs, halo)
+
+		-- Автоподбор при касании
+		part.Touched:Connect(function(hit)
+			if not part.Parent then
+				return
+			end
+			local character = hit.Parent
+			local player = character and Players:GetPlayerFromCharacter(character)
+			if not player then
+				return
+			end
+
+			if Core.addEggToBackpack(player, eggTypeName, 1) then
+				Core.notify(player, string.format(
+					"%s %s яйцо!", eggType.Icon or "🥚", eggType.DisplayName
+				), eggType.Rarity)
+				part:Destroy()
+				if halo.Parent then
+					halo:Destroy()
+				end
+			end
+		end)
+	end
+end
+
+local function startEvent()
+	local events = Config.Events
+	local event = events[RNG:NextInteger(1, #events)]
+	if not event then
+		return
+	end
+
+	state.currentEvent = event
+	state.eventMultiplier = event.Multiplier or 1
+
+	broadcast(string.format("🎉 ИВЕНТ: %s — %s", event.Name, event.Description), event.Color)
+
+	-- Показываем баннер в интерфейсе
+	for _, player in ipairs(Players:GetPlayers()) do
+		fireClient("EventUpdate", player, {
+			Name = event.Name,
+			Description = event.Description,
+			Color = event.Color,
+		})
+	end
+
+	spawnEventEggs(event)
+
+	task.delay(Config.EventDuration, function()
+		if state.currentEvent ~= event then
+			return
+		end
+
+		state.currentEvent = nil
+		state.eventMultiplier = 1
+		clearEventEggs()
+
+		broadcast("⌛ Ивент закончился. Следующий через 2 минуты!", Color3.fromRGB(200, 200, 220))
+
+		for _, player in ipairs(Players:GetPlayers()) do
+			fireClient("EventUpdate", player, nil)
+		end
+	end)
+end
+
+function Core.startEventLoop()
+	task.spawn(function()
+		while true do
+			task.wait(Config.EventInterval - Config.EventWarnBefore)
+
+			if #Players:GetPlayers() > 0 then
+				broadcast("⚡ Через 8 секунд начнётся ивент!", Color3.fromRGB(255, 230, 140))
+			end
+
+			task.wait(Config.EventWarnBefore)
+
+			-- Не запускаем ивент в пустом сервере
+			if #Players:GetPlayers() > 0 then
+				startEvent()
+			end
+
+			task.wait(Config.EventDuration)
+		end
+	end)
+end
+
+-- Данные активного ивента для интерфейса
+function Core.getEventInfo()
+	local event = state.currentEvent
+	if not event then
+		return nil
+	end
+	return {
+		Name = event.Name,
+		Description = event.Description,
+		Color = event.Color,
+	}
+end
+
+-- ============================================================
+-- КЛИКЕР: ГНЁЗДА
+-- ============================================================
+
+state.nests = {}          -- { { Model=, Prompt=, Position=, LastHit={player->time} }, ... }
+state.combo = {}          -- player -> { Count = int, LastHit = number }
+state.eventMultiplier = 1 -- множитель яиц от активного ивента
+state.boostPerPlayer = {} -- player -> суммарный буст дохода (донат)
+
+--[[
+	Клик по гнезду.
+	Игрок подходит и жмёт E. Каждый клик может выбить яйцо, а серия
+	кликов подряд повышает шанс редкого (комбо).
+]]
+function Core.hitNest(player, nestIndex)
+	local nest = state.nests[nestIndex]
+	if not nest then
+		return false, "Гнездо не найдено"
+	end
+
+	if not Data.isLoaded(player) then
+		return false, "Данные ещё загружаются"
+	end
+
+	local root = getRoot(player)
+	if not root then
+		return false, "Персонаж не готов"
+	end
+
+	-- Проверка дистанции: нельзя кликать гнездо с другого конца карты
+	if horizontalDistance(root.Position, nest.Position) > Config.NestRange then
+		return false, "Подойди ближе к гнезду"
+	end
+
+	-- Кулдаун на гнездо для конкретного игрока
+	local now = os.clock()
+	nest.LastHit = nest.LastHit or {}
+	local last = nest.LastHit[player]
+	if last and now - last < Config.NestCooldown then
+		return false, nil
+	end
+	nest.LastHit[player] = now
+
+	-- Комбо: серия кликов подряд повышает удачу
+	local combo = state.combo[player]
+	if not combo or now - combo.LastHit > Config.ComboWindow then
+		combo = { Count = 0, LastHit = now }
+		state.combo[player] = combo
+	end
+	combo.Count += 1
+	combo.LastHit = now
+
+	local luck = 1 + math.min(Config.ComboMax - 1, (combo.Count - 1) * Config.ComboStep)
+
+	-- Крит: резкий скачок удачи
+	local isCrit = RNG:NextNumber() < Config.CritChance
+	if isCrit then
+		luck *= Config.CritMultiplier
+	end
+
+	local eggType = pickEggType(luck)
+
+	-- Множитель от активного ивента
+	local amount = math.max(1, math.floor((state.eventMultiplier or 1)))
+
+	-- Во время ивента клик иногда даёт яйцо из события
+	if state.currentEvent and state.currentEvent.MinType then
+		local eventChance = 0.5
+		if RNG:NextNumber() < eventChance then
+			eggType = pickEggBetween(state.currentEvent.MinType, state.currentEvent.MaxType)
+		end
+	end
+
+	local added = Core.addEggToBackpack(player, eggType, amount)
+
+	-- Обратная связь клиенту: анимация и звук
+	fireClient("NestHit", player, {
+		NestIndex = nestIndex,
+		EggType = eggType,
+		Amount = amount,
+		Combo = combo.Count,
+		Crit = isCrit,
+		Added = added,
+	})
+
+	return true, eggType
+end
+
+-- Серия кликов сбрасывается, если игрок перестал кликать
+function Core.getCombo(player)
+	local combo = state.combo[player]
+	if not combo then
+		return 0
+	end
+	if os.clock() - combo.LastHit > Config.ComboWindow then
+		return 0
+	end
+	return combo.Count
+end
+
+function Core.registerNests(mapData)
+	state.nests = {}
+
+	local nestsFolder = mapData.Nests
+	if not nestsFolder then
+		warn("[EggGame] Папка гнёзд не найдена — кликер не работает")
+		return
+	end
+
+	for _, model in ipairs(nestsFolder:GetChildren()) do
+		if model:IsA("Model") then
+			local prompt = model:FindFirstChild("HitPrompt", true)
+			local base = model:FindFirstChild("NestBase", true)
+
+			local index = #state.nests + 1
+			local nest = {
+				Model = model,
+				Prompt = prompt,
+				Position = base and base.Position or model:GetPivot().Position,
+				Index = index,
+				LastHit = {},
+			}
+
+			table.insert(state.nests, nest)
+
+			if prompt then
+				prompt.Triggered:Connect(function(player)
+					Core.hitNest(player, index)
+				end)
+			end
+		end
+	end
+
+	print("[EggGame] Гнёзд-кликеров: " .. tostring(#state.nests))
 end
 
 -- ============================================================

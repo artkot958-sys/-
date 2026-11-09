@@ -21,6 +21,9 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Конфиг нужен для названий и цветов типов яиц в попапах кликера
+local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
+
 local remotesFolder = ReplicatedStorage:WaitForChild("EggGameRemotes")
 local notifyRemote = remotesFolder:WaitForChild("Notify")
 local coinsRemote = remotesFolder:WaitForChild("CoinsUpdate")
@@ -29,6 +32,8 @@ local carriedRemote = remotesFolder:WaitForChild("CarriedUpdate")
 local baseInfoRemote = remotesFolder:WaitForChild("BaseInfo")
 local buyRemote = remotesFolder:WaitForChild("BuyUpgrade")
 local getShopRemote = remotesFolder:WaitForChild("GetShop")
+local nestHitRemote = remotesFolder:WaitForChild("NestHit")
+local eventUpdateRemote = remotesFolder:WaitForChild("EventUpdate")
 local openShopRemote = remotesFolder:WaitForChild("OpenShop")
 
 -- ============================================================
@@ -398,7 +403,7 @@ shopHeader.ZIndex = 22
 shopHeader.Parent = shopPanel
 
 label(shopHeader, {
-	Text = "🛒  МАГАЗИН УЛУЧШЕНИЙ",
+	Text = "🛒  МАГАЗИН",
 	Font = FONT_BLACK,
 	TextSize = 21,
 	TextColor3 = C.Accent,
@@ -428,8 +433,48 @@ local closeButton = button(shopHeader, {
 })
 corner(closeButton, 12)
 
+-- ============================================================
+-- ВКЛАДКИ: УЛУЧШЕНИЯ / ДОНАТ
+-- ============================================================
+
+local tabsBar = Instance.new("Frame")
+tabsBar.Name = "Tabs"
+tabsBar.BackgroundTransparency = 1
+tabsBar.Position = UDim2.fromOffset(14, 78)
+tabsBar.Size = UDim2.new(1, -28, 0, 40)
+tabsBar.ZIndex = 22
+tabsBar.Parent = shopPanel
+
+local tabsLayout = Instance.new("UIListLayout")
+tabsLayout.FillDirection = Enum.FillDirection.Horizontal
+tabsLayout.Padding = UDim.new(0, 8)
+tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabsLayout.Parent = tabsBar
+
+local currentTab = "upgrades"
+
+local upgradeTab = button(tabsBar, {
+	Text = "⬆️ Улучшения",
+	Size = UDim2.new(0.5, -4, 1, 0),
+	BackgroundColor3 = C.Accent,
+	TextColor3 = C.BgDeep,
+	TextSize = 15,
+	ZIndex = 23,
+})
+corner(upgradeTab, 10)
+
+local donateTab = button(tabsBar, {
+	Text = "💎 Robux",
+	Size = UDim2.new(0.5, -4, 1, 0),
+	BackgroundColor3 = C.BgDeep,
+	TextColor3 = C.Dim,
+	TextSize = 15,
+	ZIndex = 23,
+})
+corner(donateTab, 10)
+
 local scroll = Instance.new("ScrollingFrame")
-scroll.Position = UDim2.fromOffset(14, 78)
+scroll.Position = UDim2.fromOffset(14, 126)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
@@ -456,7 +501,7 @@ local function resizeShop()
 	local height = math.min(600, viewport.Y * 0.88)
 
 	shopPanel.Size = UDim2.fromOffset(width, height)
-	scroll.Size = UDim2.new(1, -28, 1, -92)
+	scroll.Size = UDim2.new(1, -28, 1, -140)
 end
 
 local function updateBuyButtonState(buyButton, entry, coins)
@@ -604,6 +649,167 @@ local function renderShop(entries, coins)
 		end
 	end
 end
+
+-- ============================================================
+-- ВКЛАДКА ДОНАТА (ЗА ROBUX)
+-- ============================================================
+
+local getDonationsRemote = remotesFolder:WaitForChild("GetDonations")
+local buyDonationRemote = remotesFolder:WaitForChild("BuyDonation")
+
+local cachedDonations = nil
+
+local function clearScroll()
+	for _, child in ipairs(scroll:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+end
+
+local function renderDonations()
+	clearScroll()
+
+	local items = cachedDonations
+	if not items then
+		local ok, payload = pcall(function()
+			return getDonationsRemote:InvokeServer()
+		end)
+		if ok and payload then
+			items = payload
+			cachedDonations = payload
+		end
+	end
+
+	items = items or {}
+
+	if #items == 0 then
+		local empty = label(scroll, {
+			Text = "Товары временно недоступны",
+			Font = FONT,
+			TextSize = 14,
+			TextColor3 = C.Dim,
+			Position = UDim2.fromOffset(0, 20),
+			Size = UDim2.new(1, 0, 0, 40),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 22,
+		})
+		empty.LayoutOrder = 1
+		return
+	end
+
+	for index, item in ipairs(items) do
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1, -10, 0, 96)
+		row.BackgroundColor3 = C.Row
+		row.BackgroundTransparency = 0.05
+		row.BorderSizePixel = 0
+		row.LayoutOrder = index
+		row.ZIndex = 22
+		row.Parent = scroll
+		corner(row, 12)
+		stroke(row, item.Color or C.Accent, 1.5, 0.3)
+
+		label(row, {
+			Text = item.Icon or "🎁",
+			TextSize = 32,
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.fromOffset(50, 96),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 22,
+		})
+
+		label(row, {
+			Text = item.Name,
+			Font = FONT_BLACK,
+			TextSize = 17,
+			TextColor3 = item.Color or C.Accent,
+			Position = UDim2.fromOffset(64, 12),
+			Size = UDim2.new(1, -190, 0, 20),
+			ZIndex = 22,
+		})
+
+		label(row, {
+			Text = item.Description,
+			Font = FONT,
+			TextSize = 12,
+			TextColor3 = C.Dim,
+			TextWrapped = true,
+			Position = UDim2.fromOffset(64, 34),
+			Size = UDim2.new(1, -190, 0, 34),
+			ZIndex = 22,
+		})
+
+		if not item.Configured then
+			label(row, {
+				Text = "⚠ не настроен (нужен ProductId)",
+				Font = FONT_BOLD,
+				TextSize = 11,
+				TextColor3 = C.Bad,
+				Position = UDim2.fromOffset(64, 68),
+				Size = UDim2.new(1, -190, 0, 16),
+				ZIndex = 22,
+			})
+		end
+
+		local buyButton = button(row, {
+			Text = "R$ " .. tostring(item.Price or "?"),
+			Font = FONT_BLACK,
+			TextSize = 15,
+			Size = UDim2.fromOffset(112, 52),
+			Position = UDim2.new(1, -124, 0.5, -26),
+			BackgroundColor3 = item.Configured and (item.Color or C.Good) or C.BgDeep,
+			TextColor3 = item.Configured and C.BgDeep or C.Dim,
+			ZIndex = 23,
+		})
+		corner(buyButton, 10)
+
+		buyButton.MouseButton1Click:Connect(function()
+			if buyButton:GetAttribute("busy") then
+				return
+			end
+			buyButton:SetAttribute("busy", true)
+
+			local ok, success, message = pcall(function()
+				return buyDonationRemote:InvokeServer(item.Id)
+			end)
+
+			buyButton:SetAttribute("busy", false)
+
+			if not ok then
+				toast("Ошибка покупки", C.Bad)
+				return
+			end
+
+			if success then
+				toast(message or "Открываю окно покупки...", C.Good)
+			else
+				toast(message or "Не удалось купить", C.Bad)
+			end
+		end)
+	end
+end
+
+local function setTab(tabName)
+	currentTab = tabName
+
+	if tabName == "upgrades" then
+		upgradeTab.BackgroundColor3 = C.Accent
+		upgradeTab.TextColor3 = C.BgDeep
+		donateTab.BackgroundColor3 = C.BgDeep
+		donateTab.TextColor3 = C.Dim
+		renderShop(cachedEntries, cachedCoins)
+	else
+		donateTab.BackgroundColor3 = C.Accent
+		donateTab.TextColor3 = C.BgDeep
+		upgradeTab.BackgroundColor3 = C.BgDeep
+		upgradeTab.TextColor3 = C.Dim
+		renderDonations()
+	end
+end
+
+upgradeTab.MouseButton1Click:Connect(function() setTab("upgrades") end)
+donateTab.MouseButton1Click:Connect(function() setTab("donate") end)
 
 -- Сервер присылает обновлённый магазин после покупки и периодически
 shopRemote.OnClientEvent:Connect(function(entries, coins)
@@ -829,4 +1035,108 @@ task.spawn(function()
 	toast("Неси их на свою базу 🏦", C.Good)
 	task.wait(2.6)
 	toast("Магазин улучшений — клавиша B", C.AccentSoft)
+end)
+
+
+-- ============================================================
+-- ИНДИКАТОР ИВЕНТА
+-- ============================================================
+
+local eventBanner = Instance.new("Frame")
+eventBanner.Name = "EventBanner"
+eventBanner.AnchorPoint = Vector2.new(0.5, 0)
+eventBanner.Position = UDim2.new(0.5, 0, 0, 12)
+eventBanner.Size = UDim2.fromOffset(420, 58)
+eventBanner.BackgroundColor3 = C.Bg
+eventBanner.BackgroundTransparency = 0.15
+eventBanner.BorderSizePixel = 0
+eventBanner.Visible = false
+eventBanner.ZIndex = 40
+eventBanner.Parent = screenGui
+corner(eventBanner, 14)
+stroke(eventBanner, C.Accent, 2, 0.2)
+
+local eventTitle = label(eventBanner, {
+	Text = "🎉 ИВЕНТ",
+	Font = FONT_BLACK,
+	TextSize = 16,
+	TextColor3 = C.Accent,
+	Position = UDim2.fromOffset(14, 8),
+	Size = UDim2.new(1, -28, 0, 20),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	ZIndex = 41,
+})
+
+local eventSubtitle = label(eventBanner, {
+	Text = "",
+	Font = FONT,
+	TextSize = 12,
+	TextColor3 = C.Text,
+	Position = UDim2.fromOffset(14, 30),
+	Size = UDim2.new(1, -28, 0, 20),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	ZIndex = 41,
+})
+
+eventUpdateRemote.OnClientEvent:Connect(function(info)
+	if not info then
+		eventBanner.Visible = false
+		return
+	end
+
+	eventTitle.Text = "🎉 " .. tostring(info.Name)
+	eventSubtitle.Text = tostring(info.Description or "")
+	eventBanner.Visible = true
+
+	if info.Color then
+		eventTitle.TextColor3 = info.Color
+		stroke(eventBanner, info.Color, 2, 0.2)
+	end
+end)
+
+-- ============================================================
+-- ОБРАТНАЯ СВЯЗЬ КЛИКЕРА
+-- ============================================================
+
+nestHitRemote.OnClientEvent:Connect(function(data)
+	if not data then
+		return
+	end
+
+	local eggType = Config and Config.EggTypes and Config.EggTypes[data.EggType]
+	local color = eggType and eggType.Rarity or C.Accent
+	local text = string.format("+%d %s", data.Amount or 1, eggType and eggType.DisplayName or "")
+
+	if data.Crit then
+		text = "💥 КРИТ! " .. text
+		color = Color3.fromRGB(255, 220, 90)
+	end
+
+	if data.Combo and data.Combo > 3 then
+		text ..= string.format("  x%d", data.Combo)
+	end
+
+	-- Всплывающая надпись в центре экрана
+	local popup = label(screenGui, {
+		Text = text,
+		Font = FONT_BLACK,
+		TextSize = data.Crit and 30 or 22,
+		TextColor3 = color,
+		TextStrokeTransparency = 0.3,
+		Position = UDim2.new(0.5, 0, 0.62, 0),
+		Size = UDim2.fromOffset(460, 40),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 45,
+	})
+	popup.AnchorPoint = Vector2.new(0.5, 0.5)
+
+	local tween = TweenService:Create(popup, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0.5, 0, 0.52, 0),
+		TextTransparency = 1,
+	})
+
+	tween:Play()
+	tween.Completed:Connect(function()
+		popup:Destroy()
+	end)
 end)

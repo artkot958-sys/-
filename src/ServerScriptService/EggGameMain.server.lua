@@ -105,6 +105,10 @@ local remotes = {
 	BuyUpgrade = ensureRemote("RemoteFunction", "BuyUpgrade"),
 	GetShop = ensureRemote("RemoteFunction", "GetShop"),
 	OpenShop = ensureRemote("RemoteEvent", "OpenShop"),
+	NestHit = ensureRemote("RemoteEvent", "NestHit"),
+	EventUpdate = ensureRemote("RemoteEvent", "EventUpdate"),
+	GetDonations = ensureRemote("RemoteFunction", "GetDonations"),
+	BuyDonation = ensureRemote("RemoteFunction", "BuyDonation"),
 }
 
 -- ============================================================
@@ -113,8 +117,27 @@ local remotes = {
 
 Core.init(mapData, remotes)
 
+-- Гнёзда-кликеры: подключаем ProximityPrompt к логике
+Core.registerNests(mapData)
+
+-- Ивенты каждые 2 минуты
+Core.startEventLoop()
+
+-- Донат: обработчик чеков Roblox
+Core.setupMarketplace()
+
 -- Оживляем мир: вращение статуи, мерцание костров, гирлянды
 Map.startAnimations()
+
+-- Список донат-товаров
+remotes.GetDonations.OnServerInvoke = function(player)
+	return Core.getDonationList()
+end
+
+-- Покупка за Robux
+remotes.BuyDonation.OnServerInvoke = function(player, itemId)
+	return Core.purchaseDonation(player, itemId)
+end
 
 -- Стойка у входа в магазин открывает интерфейс улучшений
 if mapData.Shop and mapData.Shop.Prompt then
