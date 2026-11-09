@@ -12,6 +12,7 @@
 const fs = require("fs");
 const path = require("path");
 
+const { buildPreview } = require("./build-preview.js");
 const ROOT = path.join(__dirname, "..");
 const SRC = path.join(ROOT, "src");
 const OUTPUT = path.join(ROOT, "EggGame.rbxlx");
@@ -174,7 +175,17 @@ const fallbackSpawn = item("SpawnLocation", "FallbackSpawn", "", [
   `\t\t\t<Color3uint8 name="Color3uint8">4294953543</Color3uint8>`,
 ]);
 
-const workspace = item("Workspace", "Workspace", [fallbackFloor, fallbackSpawn].join("\n"));
+// ============================================================
+// ПРЕВЬЮ МИРА
+// ============================================================
+// Геометрия карты дублируется прямо в файл, чтобы её было видно
+// СРАЗУ при открытии — без нажатия Play.
+// При запуске игры EggGameMain удалит эту копию и построит живую арену.
+
+console.log("Генерирую превью мира...");
+const previewXml = buildPreview();
+
+const workspace = item("Workspace", "Workspace", [fallbackFloor, fallbackSpawn].join("\n") + "\n" + previewXml);
 
 // ============================================================
 // СБОРКА ФАЙЛА

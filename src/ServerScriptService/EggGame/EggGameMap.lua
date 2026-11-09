@@ -1,32 +1,73 @@
 --[[
-	EggGameMap — строит всю карту кодом. Руками ничего расставлять не нужно.
+	EggGameMap — строит весь мир игры кодом.
 
 	Место в Studio: ServerScriptService -> ModuleScript "EggGameMap"
 
-	Создаёт в Workspace/EggGame:
-	  Arena       — пол, стены, деревья
-	  Market      — рынок в центре, точка спавна игроков
-	  Bases       — 16 баз по кругу: площадка, склад, вывеска
-	  Eggs        — яйца, лежащие на рынке
-	  VaultEggs   — яйца, лежащие на складах баз
-	  Carried     — яйца в руках/за спиной игроков
+	МИР:
+	  • Круглая арена с ландшафтом (трава, песок, камень)
+	  • Рынок в центре: шатры, прилавки, фонари, статуя яйца
+	  • 16 баз по кругу с заборами, ящиками и вывесками
+	  • Горы по краям, деревья, камни, кусты
+	  • Деревянный настил-дорога от рынка к базам
+	  • Освещение, атмосфера, небо
+
+	Всё создаётся из частей — никаких внешних моделей не нужно.
 ]]
 
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 
 local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
 
 local Map = {}
 
+-- Реестры объектов, которые анимируются: собираются при постройке,
+-- крутятся в отдельном цикле (чтобы не плодить потоки)
+Map.AnimatedFlames = {}
+Map.AnimatedFires = {}
+Map.AnimatedLanterns = {}
+Map.Statue = nil
+
 local RNG = Random.new()
+
+-- ============================================================
+-- ПАЛИТРА МИРА
+-- ============================================================
+
+local PALETTE = {
+	GrassDark = Color3.fromRGB(64, 122, 62),
+	GrassMid = Color3.fromRGB(84, 146, 76),
+	GrassLight = Color3.fromRGB(104, 168, 88),
+	Sand = Color3.fromRGB(206, 184, 132),
+	SandDark = Color3.fromRGB(178, 154, 104),
+	Stone = Color3.fromRGB(126, 128, 134),
+	StoneDark = Color3.fromRGB(92, 94, 102),
+	Rock = Color3.fromRGB(108, 110, 118),
+	Dirt = Color3.fromRGB(128, 100, 72),
+	DirtDark = Color3.fromRGB(100, 78, 56),
+	Wood = Color3.fromRGB(124, 90, 58),
+	WoodDark = Color3.fromRGB(88, 62, 40),
+	WoodLight = Color3.fromRGB(158, 120, 78),
+	RoofRed = Color3.fromRGB(168, 64, 54),
+	RoofOrange = Color3.fromRGB(206, 112, 48),
+	RoofBlue = Color3.fromRGB(62, 104, 158),
+	Canvas = Color3.fromRGB(232, 218, 186),
+	CanvasDark = Color3.fromRGB(198, 178, 142),
+	Gold = Color3.fromRGB(255, 196, 64),
+	LanternGlow = Color3.fromRGB(255, 212, 132),
+	Water = Color3.fromRGB(78, 152, 196),
+	LeafA = Color3.fromRGB(58, 138, 78),
+	LeafB = Color3.fromRGB(96, 180, 108),
+	LeafC = Color3.fromRGB(44, 112, 66),
+}
 
 -- ============================================================
 -- ХЕЛПЕРЫ
 -- ============================================================
 
-local function newPart(props)
+local function newPart(props, parent)
 	local part = Instance.new("Part")
 	part.Anchored = true
 	part.CanCollide = false
@@ -36,31 +77,54 @@ local function newPart(props)
 	for key, value in pairs(props) do
 		part[key] = value
 	end
+	if parent then
+		part.Parent = parent
+	end
 	return part
 end
 
--- Плоский цилиндр, лежащий горизонтально (ось цилиндра смотрит вверх)
-local function newDisc(name, position, radius, height, color, parent)
-	local disc = newPart({
-		Name = name,
-		Size = Vector3.new(height, radius * 2, radius * 2),
-		Color = color,
-		CanCollide = true,
-		Material = Enum.Material.Slate,
-	})
-	disc.Shape = Enum.PartType.Cylinder
-	disc.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
-	disc.Parent = parent
-	return disc
+-- Часть с учётом формы: в Roblox шар/цилиндр масштабируются
+-- по минимальной оси, поэтому размер приводим к корректному
+local function shapePart(shape, diameter, height, props, parent)
+	local part = newPart(props, parent)
+
+	if shape == "Ball" then
+		part.Shape = Enum.PartType.Ball
+		part.Size = Vector3.new(diameter, diameter, diameter)
+	elseif shape == "Cylinder" then
+		part.Shape = Enum.PartType.Cylinder
+		-- Цилиндр в Roblox «лежит» вдоль X
+		part.Size = Vector3.new(height, diameter, diameter)
+	else
+		part.Shape = Enum.PartType.Block
+		part.Size = Vector3.new(diameter, height, diameter)
+	end
+
+	return part
 end
 
-local function makeBillboard(adornee, text, color, size, offset)
+-- Плоский цилиндр, ось которого смотрит вверх (диск)
+local function newDisc(props, parent)
+	local part = newPart(props, parent)
+	part.Shape = Enum.PartType.Cylinder
+
+	local diameter = props.Radius and props.Radius * 2 or part.Size.Z
+	local height = props.Height or 1
+
+	part.Size = Vector3.new(height, diameter, diameter)
+	part.CFrame = (props.CFrame or CFrame.new(props.Position or Vector3.new()))
+		* CFrame.Angles(0, 0, math.rad(90))
+
+	return part
+end
+
+local function makeBillboard(adornee, text, color, size, offset, font)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Info"
 	gui.Size = size or UDim2.fromOffset(280, 46)
 	gui.StudsOffset = offset or Vector3.new(0, 3, 0)
 	gui.AlwaysOnTop = false
-	gui.MaxDistance = 220
+	gui.MaxDistance = 250
 	gui.LightInfluence = 0
 	gui.Adornee = adornee
 	gui.Parent = adornee
@@ -68,10 +132,10 @@ local function makeBillboard(adornee, text, color, size, offset)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBlack
+	label.Font = font or Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.TextColor3 = color or Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.4
+	label.TextStrokeTransparency = 0.35
 	label.TextStrokeColor3 = Color3.new(0, 0, 0)
 	label.Text = text
 	label.Parent = gui
@@ -92,6 +156,11 @@ local function makePrompt(parent, actionText, objectText, distance, holdTime)
 	return prompt
 end
 
+-- Точка на окружности
+local function ringPoint(radius, angle, y)
+	return Vector3.new(math.cos(angle) * radius, y or 0, math.sin(angle) * radius)
+end
+
 -- ============================================================
 -- ЯЙЦО КАК ЧАСТЬ
 -- ============================================================
@@ -103,8 +172,6 @@ function Map.makeEggPart(eggTypeName, parent)
 		eggType = Config.EggTypes.Common
 	end
 
-	-- Шар: в Roblox шар рендерится по минимальной оси,
-	-- поэтому берём ровный размер, чтобы не было сюрпризов
 	local diameter = math.max(eggType.Size.X, eggType.Size.Z)
 
 	local part = newPart({
@@ -115,20 +182,27 @@ function Map.makeEggPart(eggTypeName, parent)
 		CanCollide = false,
 		CanQuery = false,
 		CanTouch = false,
-	})
-	-- SpecialMesh со сферой + растяжение по Y даёт форму яйца
+	}, parent)
+
+	-- Сфера + растяжение по Y = форма яйца
 	local mesh = Instance.new("SpecialMesh")
 	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Scale = Vector3.new(1, 1.32, 1)
+	mesh.Scale = Vector3.new(1, 1.34, 1)
 	mesh.Parent = part
 
-	part.Parent = parent
+	-- Блик, чтобы яйцо читалось объёмным
+	local shine = Instance.new("Highlight")
+	shine.FillColor = eggType.Color
+	shine.FillTransparency = 0.82
+	shine.OutlineTransparency = 1
+	shine.DepthMode = Enum.HighlightDepthMode.Occluded
+	shine.Parent = part
 
 	if eggTypeName == "Epic" or eggTypeName == "Legendary" then
 		local light = Instance.new("PointLight")
 		light.Color = eggType.Color
-		light.Range = (eggTypeName == "Legendary") and 14 or 9
-		light.Brightness = (eggTypeName == "Legendary") and 2 or 1
+		light.Range = (eggTypeName == "Legendary") and 16 or 10
+		light.Brightness = (eggTypeName == "Legendary") and 2.2 or 1.2
 		light.Parent = part
 	end
 
@@ -142,277 +216,618 @@ function Map.randomPointInDisc(radius)
 end
 
 -- ============================================================
--- ПОСТРОЙКА КАРТЫ
+-- ЛАНДШАФТ
 -- ============================================================
 
-function Map.build()
-	local oldMap = Workspace:FindFirstChild("EggGame")
-	if oldMap then
-		oldMap:Destroy()
+local function buildTerrain(folder)
+	local size = Config.ArenaSize
+	local half = size / 2
+
+	-- Основание (плита под всем, чтобы не было дыр)
+	local base = newPart({
+		Name = "WorldBase",
+		Size = Vector3.new(size + 60, 24, size + 60),
+		Position = Vector3.new(0, -13, 0),
+		Color = PALETTE.StoneDark,
+		Material = Enum.Material.Rock,
+		CanCollide = true,
+	}, folder)
+
+	-- Основное травяное поле
+	local ground = newPart({
+		Name = "Ground",
+		Size = Vector3.new(size, 4, size),
+		Position = Vector3.new(0, -2, 0),
+		Color = PALETTE.GrassMid,
+		Material = Enum.Material.Grass,
+		CanCollide = true,
+	}, folder)
+
+	-- Пятна травы разных оттенков (для живости, без коллизий)
+	for i = 1, 46 do
+		local point = Map.randomPointInDisc(half - 12)
+		local patchSize = 18 + RNG:NextNumber() * 42
+
+		newDisc({
+			Name = "GrassPatch",
+			Radius = patchSize / 2,
+			Height = 0.3,
+			Position = Vector3.new(point.X, 0.12, point.Z),
+			Color = (i % 3 == 0 and PALETTE.GrassLight)
+				or (i % 3 == 1 and PALETTE.GrassDark)
+				or PALETTE.GrassMid,
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
 	end
 
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if child.Name == "Baseplate" or child.Name == "SpawnLocation" then
-			child:Destroy()
+	-- Песчаная дорога-кольцо вокруг баз
+	newDisc({
+		Name = "RingRoad",
+		Radius = Config.BaseRingRadius + 26,
+		Height = 0.6,
+		Position = Vector3.new(0, 0.2, 0),
+		Color = PALETTE.SandDark,
+		Material = Enum.Material.Sand,
+		CanCollide = false,
+		CanQuery = false,
+	}, folder)
+
+	-- Каменная площадь под рынком
+	newDisc({
+		Name = "MarketPlaza",
+		Radius = Config.MarketRadius + 10,
+		Height = 0.9,
+		Position = Vector3.new(0, 0.3, 0),
+		Color = PALETTE.Stone,
+		Material = Enum.Material.Cobblestone,
+		CanCollide = true,
+	}, folder)
+
+	-- Дорожки от рынка к каждой базе
+	for i = 1, Config.BasesCount do
+		local angle = ((i - 1) / Config.BasesCount) * math.pi * 2
+		local from = Config.MarketRadius + 8
+		local to = Config.BaseRingRadius - Config.BaseZoneRadius - 2
+		local length = to - from
+		local middle = (from + to) / 2
+
+		local path = newPart({
+			Name = "Path",
+			Size = Vector3.new(9, 0.35, length),
+			CFrame = CFrame.new(ringPoint(middle, angle, 0.28))
+				* CFrame.Angles(0, -angle + math.pi / 2, 0),
+			Color = PALETTE.Dirt,
+			Material = Enum.Material.Ground,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- ===================== ГОРЫ ПО КРАЯМ =====================
+	local mountainCount = 26
+	for i = 1, mountainCount do
+		local angle = (i / mountainCount) * math.pi * 2 + RNG:NextNumber() * 0.15
+		local distance = half - RNG:NextNumber() * 26 - 8
+		local point = ringPoint(distance, angle, 0)
+
+		local height = 34 + RNG:NextNumber() * 56
+		local width = 26 + RNG:NextNumber() * 26
+
+		-- Основание горы
+		shapePart("Cylinder", width, height, {
+			Name = "Mountain",
+			CFrame = CFrame.new(Vector3.new(point.X, height / 2 - 3, point.Z))
+				* CFrame.Angles(0, RNG:NextNumber() * math.pi, math.rad(90)),
+			Color = PALETTE.Rock:Lerp(PALETTE.StoneDark, RNG:NextNumber()),
+			Material = Enum.Material.Rock,
+			CanCollide = true,
+		}, folder)
+
+		-- Вершина (снег)
+		shapePart("Ball", width * 0.55, width * 0.55, {
+			Name = "Peak",
+			Position = Vector3.new(point.X, height - 6, point.Z),
+			Color = Color3.fromRGB(232, 238, 245),
+			Material = Enum.Material.Snow,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- ===================== СТЕНЫ ПО ПЕРИМЕТРУ =====================
+	-- Невысокие, чтобы не закрывать вид на горы
+	local wallHeight = 26
+	local wallThickness = 8
+	local wallDefs = {
+		{ Vector3.new(0, wallHeight / 2 - 1, -half - wallThickness / 2), Vector3.new(size + wallThickness * 2, wallHeight, wallThickness) },
+		{ Vector3.new(0, wallHeight / 2 - 1, half + wallThickness / 2), Vector3.new(size + wallThickness * 2, wallHeight, wallThickness) },
+		{ Vector3.new(-half - wallThickness / 2, wallHeight / 2 - 1, 0), Vector3.new(wallThickness, wallHeight, size) },
+		{ Vector3.new(half + wallThickness / 2, wallHeight / 2 - 1, 0), Vector3.new(wallThickness, wallHeight, size) },
+	}
+
+	for index, def in ipairs(wallDefs) do
+		newPart({
+			Name = "BoundaryWall" .. index,
+			Size = def[2],
+			Position = def[1],
+			Color = PALETTE.StoneDark,
+			Material = Enum.Material.Rock,
+			CanCollide = true,
+		}, folder)
+	end
+end
+
+-- ============================================================
+-- РЫНОК
+-- ============================================================
+
+local function buildMarket(folder)
+	local R = Config.MarketRadius
+
+	-- Центральный постамент
+	newDisc({
+		Name = "PedestalBase",
+		Radius = 7,
+		Height = 3.2,
+		Position = Vector3.new(0, 2, 0),
+		Color = PALETTE.Stone,
+		Material = Enum.Material.Marble,
+		CanCollide = true,
+	}, folder)
+
+	newDisc({
+		Name = "PedestalTop",
+		Radius = 5.2,
+		Height = 1.2,
+		Position = Vector3.new(0, 4, 0),
+		Color = PALETTE.StoneDark,
+		Material = Enum.Material.Marble,
+		CanCollide = true,
+	}, folder)
+
+	-- Статуя яйца
+	local statue = Map.makeEggPart("Legendary", folder)
+	statue.Name = "MarketStatue"
+	statue.Size = Vector3.new(4.4, 4.4, 4.4)
+	statue.Position = Vector3.new(0, 7.4, 0)
+
+	-- Свечение вокруг статуи
+	local statueLight = Instance.new("PointLight")
+	statueLight.Color = PALETTE.Gold
+	statueLight.Range = 40
+	statueLight.Brightness = 3
+	statueLight.Parent = statue
+
+	Map.Statue = statue
+
+	-- ===================== ШАТРЫ =====================
+	local tentsCount = 8
+	for i = 1, tentsCount do
+		local angle = ((i - 1) / tentsCount) * math.pi * 2 + math.pi / tentsCount
+		local point = ringPoint(R - 4, angle, 0)
+
+		local tent = Instance.new("Model")
+		tent.Name = "Tent_" .. i
+		tent.Parent = folder
+
+		-- основание
+		newPart({
+			Name = "Floor",
+			Size = Vector3.new(15, 0.7, 15),
+			CFrame = CFrame.new(point + Vector3.new(0, 0.7, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.WoodLight,
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = true,
+		}, tent)
+
+		-- 4 столба
+		for pillar = 1, 4 do
+			local offsetX = (pillar <= 2) and -6.2 or 6.2
+			local offsetZ = (pillar % 2 == 1) and -6.2 or 6.2
+
+			local local_ = CFrame.new(point) * CFrame.Angles(0, -angle, 0)
+
+			newPart({
+				Name = "Pillar",
+				Size = Vector3.new(0.9, 12, 0.9),
+				Position = (local_ * CFrame.new(offsetX, 6.4, offsetZ)).Position,
+				Color = PALETTE.Wood,
+				Material = Enum.Material.Wood,
+				CanCollide = true,
+			}, tent)
+		end
+
+		-- навес
+		local canopyColors = { PALETTE.RoofRed, PALETTE.RoofOrange, PALETTE.RoofBlue }
+		newPart({
+			Name = "Canopy",
+			Size = Vector3.new(16, 1.1, 16),
+			CFrame = CFrame.new(point + Vector3.new(0, 12.6, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = canopyColors[(i % 3) + 1],
+			Material = Enum.Material.Fabric,
+			CanCollide = true,
+		}, tent)
+
+		-- верхушка навеса
+		newPart({
+			Name = "CanopyTop",
+			Size = Vector3.new(9, 2.4, 9),
+			CFrame = CFrame.new(point + Vector3.new(0, 14, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.CanvasDark,
+			Material = Enum.Material.Fabric,
+			CanCollide = false,
+			CanQuery = false,
+		}, tent)
+
+		-- прилавок внутри
+		newPart({
+			Name = "Counter",
+			Size = Vector3.new(7, 3, 2.2),
+			CFrame = CFrame.new(point + Vector3.new(0, 3.4, 3.4)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = true,
+		}, tent)
+
+		-- товар на прилавке (декоративные яйца)
+		for item = 1, 3 do
+			local egg = Map.makeEggPart(({ "Common", "Rare", "Epic" })[item], tent)
+			egg.Anchored = true
+			egg.Size = egg.Size * 0.42
+			egg.Position = (CFrame.new(point + Vector3.new(0, 5.2, 3.4)) * CFrame.Angles(0, -angle, 0)
+				* CFrame.new((item - 2) * 2, 0, 0)).Position
+		end
+
+		-- флажок
+		newPart({
+			Name = "Flag",
+			Size = Vector3.new(3.4, 2, 0.3),
+			CFrame = CFrame.new(point + Vector3.new(0, 16.4, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.Gold,
+			Material = Enum.Material.Fabric,
+			CanCollide = false,
+			CanQuery = false,
+		}, tent)
+	end
+
+	-- ===================== ФОНАРИ =====================
+	local lanternCount = 12
+	for i = 1, lanternCount do
+		local angle = ((i - 1) / lanternCount) * math.pi * 2
+		local point = ringPoint(R + 6, angle, 0)
+
+		-- столб
+		newPart({
+			Name = "LanternPost",
+			Size = Vector3.new(0.8, 13, 0.8),
+			Position = point + Vector3.new(0, 6.5, 0),
+			Color = PALETTE.StoneDark,
+			Material = Enum.Material.Metal,
+			CanCollide = true,
+		}, folder)
+
+		-- светильник
+		local bulb = shapePart("Ball", 2.2, 2.2, {
+			Name = "Lantern",
+			Position = point + Vector3.new(0, 13.6, 0),
+			Color = PALETTE.LanternGlow,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+		}, folder)
+
+		local light = Instance.new("PointLight")
+		light.Color = PALETTE.LanternGlow
+		light.Range = 34
+		light.Brightness = 1.8
+		light.Shadows = true
+		light.Parent = bulb
+
+		table.insert(Map.AnimatedLanterns, bulb)
+		table.insert(Map.AnimatedFires, light)
+	end
+
+	-- ===================== ГИРЛЯНДА =====================
+	-- Провисающие лампочки между фонарями
+	for i = 1, lanternCount do
+		local angleA = ((i - 1) / lanternCount) * math.pi * 2
+		local angleB = (i / lanternCount) * math.pi * 2
+
+		local pointA = ringPoint(R + 6, angleA, 12.6)
+		local pointB = ringPoint(R + 6, angleB, 12.6)
+
+		local segments = 5
+		for segment = 1, segments do
+			local t1 = (segment - 1) / segments
+			local t2 = segment / segments
+
+			local function lerpDrop(t, point)
+				local sag = math.sin(t * math.pi) * 1.8
+				return point + Vector3.new(0, -sag, 0)
+			end
+
+			local a = pointA:Lerp(pointB, t1)
+			local b = pointA:Lerp(pointB, t2)
+			a = lerpDrop(t1, a)
+			b = lerpDrop(t2, b)
+
+			local middle = (a + b) / 2
+			local length = (b - a).Magnitude
+
+			local wire = newPart({
+				Name = "Wire",
+				Size = Vector3.new(length, 0.14, 0.14),
+				CFrame = CFrame.new(middle, b),
+				Color = PALETTE.StoneDark,
+				Material = Enum.Material.Metal,
+				CanCollide = false,
+				CanQuery = false,
+			}, folder)
+
+			if segment == 3 then
+				local bulb = shapePart("Ball", 0.85, 0.85, {
+					Name = "Bulb",
+					Position = a,
+					Color = PALETTE.Gold,
+					Material = Enum.Material.Neon,
+					CanCollide = false,
+					CanQuery = false,
+				}, folder)
+
+				table.insert(Map.AnimatedLanterns, bulb)
+			end
 		end
 	end
 
-	local root = Instance.new("Folder")
-	root.Name = "EggGame"
-	root.Parent = Workspace
-
-	local function folder(name)
-		local f = Instance.new("Folder")
-		f.Name = name
-		f.Parent = root
-		return f
-	end
-
-	local arenaFolder = folder("Arena")
-	local marketFolder = folder("Market")
-	local basesFolder = folder("Bases")
-	local eggsFolder = folder("Eggs")
-	local vaultEggsFolder = folder("VaultEggs")
-	local carriedFolder = folder("Carried")
-
-	-- ===================== СВЕТ =====================
-	Lighting.Ambient = Color3.fromRGB(96, 102, 128)
-	Lighting.OutdoorAmbient = Color3.fromRGB(128, 138, 168)
-	Lighting.Brightness = 2.5
-	Lighting.ClockTime = 15.2
-	Lighting.EnvironmentDiffuseScale = 0.4
-	Lighting.EnvironmentSpecularScale = 0.4
-	Lighting.GlobalShadows = true
-	Lighting.FogEnd = 1400
-	Lighting.FogStart = 400
-
-	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-	if not atmosphere then
-		atmosphere = Instance.new("Atmosphere")
-		atmosphere.Parent = Lighting
-	end
-	atmosphere.Density = 0.32
-	atmosphere.Offset = 0.2
-	atmosphere.Color = Color3.fromRGB(205, 214, 232)
-	atmosphere.Decay = Color3.fromRGB(125, 145, 185)
-	atmosphere.Glare = 0.15
-	atmosphere.Haze = 1.4
-
-	-- ===================== ПОЛ И СТЕНЫ =====================
-	local arenaSize = Config.ArenaSize
-
-	local floor = newPart({
-		Name = "Floor",
-		Size = Vector3.new(arenaSize, 6, arenaSize),
-		Position = Vector3.new(0, -3, 0),
-		Color = Config.Colors.Floor,
-		Material = Enum.Material.Grass,
-		CanCollide = true,
-	})
-	floor.Parent = arenaFolder
-
-	local baseRing = newDisc("BaseRing", Vector3.new(0, 0.05, 0), Config.BaseRingRadius + 30, 0.12, Color3.fromRGB(88, 100, 120), arenaFolder)
-	baseRing.CanCollide = false
-	baseRing.Material = Enum.Material.Concrete
-
-	local wallHeight = 20
-	local wallThickness = 5
-	local halfSize = arenaSize / 2
-	local wallDefs = {
-		{ Vector3.new(0, wallHeight / 2, -halfSize), Vector3.new(arenaSize + wallThickness, wallHeight, wallThickness) },
-		{ Vector3.new(0, wallHeight / 2, halfSize), Vector3.new(arenaSize + wallThickness, wallHeight, wallThickness) },
-		{ Vector3.new(-halfSize, wallHeight / 2, 0), Vector3.new(wallThickness, wallHeight, arenaSize) },
-		{ Vector3.new(halfSize, wallHeight / 2, 0), Vector3.new(wallThickness, wallHeight, arenaSize) },
-	}
-	for index, def in ipairs(wallDefs) do
-		local wall = newPart({
-			Name = "Wall" .. index,
-			Size = def[2],
-			Position = def[1],
-			Color = Config.Colors.Wall,
-			Material = Enum.Material.Concrete,
-			CanCollide = true,
-		})
-		wall.Parent = arenaFolder
-	end
-
-	-- ===================== РЫНОК =====================
-	local marketFloor = newDisc("MarketFloor", Vector3.new(0, 0.3, 0), Config.MarketRadius + 5, 1.2, Color3.fromRGB(126, 112, 96), marketFolder)
-	marketFloor.Material = Enum.Material.Cobblestone
-
-	local marketGlow = newDisc("MarketGlow", Vector3.new(0, 0.95, 0), Config.MarketRadius + 6.5, 0.14, Config.Colors.Market, marketFolder)
-	marketGlow.Material = Enum.Material.Neon
-	marketGlow.CanCollide = false
-
-	-- Центральный постамент с огромным яйцом-памятником
-	local pedestal = newDisc("Pedestal", Vector3.new(0, 1.6, 0), 5.5, 2.6, Color3.fromRGB(152, 134, 114), marketFolder)
-	pedestal.Material = Enum.Material.Marble
-
-	local statue = Map.makeEggPart("Legendary", marketFolder)
-	statue.Name = "MarketStatue"
-	statue.Size = Vector3.new(4.6, 5.4, 4.6)
-	statue.Position = Vector3.new(0, 6.4, 0)
-
-	-- Фонари по кругу
-	for i = 1, 8 do
-		local angle = (i / 8) * math.pi * 2
-		local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (Config.MarketRadius + 3.5)
-
-		local post = newPart({
-			Name = "LanternPost",
-			Size = Vector3.new(0.9, 10, 0.9),
-			Position = position + Vector3.new(0, 5, 0),
-			Color = Color3.fromRGB(46, 42, 40),
-			Material = Enum.Material.Metal,
-			CanCollide = true,
-		})
-		post.Parent = marketFolder
-
-		local bulb = newPart({
-			Name = "Lantern",
-			Size = Vector3.new(1.9, 1.9, 1.9),
-			Position = position + Vector3.new(0, 10.4, 0),
-			Color = Config.Colors.Market,
-			Material = Enum.Material.Neon,
-		})
-		bulb.Shape = Enum.PartType.Ball
-		bulb.Parent = marketFolder
-
-		local light = Instance.new("PointLight")
-		light.Color = Config.Colors.Market
-		light.Range = 30
-		light.Brightness = 1.6
-		light.Parent = bulb
-	end
-
-	-- Точка спавна игроков
+	-- ===================== СПАВН =====================
 	local spawnLocation = Instance.new("SpawnLocation")
 	spawnLocation.Name = "PlayerSpawn"
-	spawnLocation.Size = Vector3.new(16, 1, 16)
-	spawnLocation.Position = Vector3.new(0, 1.4, 16)
+	spawnLocation.Size = Vector3.new(18, 1.2, 18)
+	spawnLocation.Position = Vector3.new(0, 1.4, 18)
 	spawnLocation.Anchored = true
 	spawnLocation.CanCollide = false
-	spawnLocation.Transparency = 0.6
-	spawnLocation.Color = Config.Colors.Market
+	spawnLocation.Transparency = 0.55
+	spawnLocation.Color = PALETTE.Gold
 	spawnLocation.Material = Enum.Material.Neon
 	spawnLocation.Neutral = true
 	spawnLocation.Duration = 0
-	spawnLocation.Parent = marketFolder
+	spawnLocation.Parent = folder
 
-	-- ===================== БАЗЫ =====================
+	-- кольцо вокруг спавна
+	newDisc({
+		Name = "SpawnRing",
+		Radius = 11,
+		Height = 0.35,
+		Position = Vector3.new(0, 0.85, 18),
+		Color = PALETTE.Gold,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		CanQuery = false,
+	}, folder)
+end
+
+-- ============================================================
+-- БАЗЫ
+-- ============================================================
+
+local function buildBases(folder)
 	local bases = {}
 
 	for index = 1, Config.BasesCount do
 		local angle = ((index - 1) / Config.BasesCount) * math.pi * 2
-		local center = Vector3.new(math.cos(angle) * Config.BaseRingRadius, 0, math.sin(angle) * Config.BaseRingRadius)
+		local center = ringPoint(Config.BaseRingRadius, angle, 0)
 		local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
+		local inward = -outward
+		local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
 
 		local model = Instance.new("Model")
 		model.Name = "Base_" .. index
-		model.Parent = basesFolder
+		model.Parent = folder
 
-		local platform = newDisc("Platform", center + Vector3.new(0, 0.4, 0), Config.BaseZoneRadius + 1.5, 0.9, Config.Colors.FreeBase, model)
-		platform.Material = Enum.Material.Sand
-		platform.CanCollide = true
+		local zoneR = Config.BaseZoneRadius
 
-		local glow = newDisc("Glow", center + Vector3.new(0, 0.09, 0), Config.BaseZoneRadius + 2.6, 0.12, Config.Colors.FreeBase, model)
-		glow.Material = Enum.Material.Neon
-		glow.CanCollide = false
-
-		-- Вывеска владельца
-		local signPost = newPart({
-			Name = "SignPost",
-			Size = Vector3.new(1, 13, 1),
-			Position = center - outward * (Config.BaseZoneRadius - 1) + Vector3.new(0, 7, 0),
-			Color = Color3.fromRGB(62, 56, 50),
-			Material = Enum.Material.Wood,
+		-- ===================== ПЛОЩАДКА =====================
+		local platform = newDisc({
+			Name = "Platform",
+			Radius = zoneR + 2,
+			Height = 1.2,
+			Position = center + Vector3.new(0, 0.6, 0),
+			Color = PALETTE.Sand,
+			Material = Enum.Material.Sand,
 			CanCollide = true,
-		})
-		signPost.Parent = model
+		}, model)
 
-		local signBoard = newPart({
-			Name = "SignBoard",
-			Size = Vector3.new(13, 5.5, 0.6),
-			Position = center - outward * (Config.BaseZoneRadius - 1) + Vector3.new(0, 14, 0),
-			Color = Color3.fromRGB(42, 36, 30),
-			Material = Enum.Material.Wood,
+		-- каменная окантовка
+		local glow = newDisc({
+			Name = "Glow",
+			Radius = zoneR + 3.4,
+			Height = 0.25,
+			Position = center + Vector3.new(0, 0.8, 0),
+			Color = Color3.fromRGB(180, 190, 200),
+			Material = Enum.Material.Neon,
 			CanCollide = false,
-		})
-		signBoard.CFrame = CFrame.new(signBoard.Position, Vector3.new(0, signBoard.Position.Y, 0))
-		signBoard.Parent = model
+			CanQuery = false,
+		}, model)
 
-		local _, signLabel = makeBillboard(signBoard, "Свободная база", Color3.new(1, 1, 1), UDim2.fromOffset(320, 62), Vector3.new(0, 0.2, 0.7))
-
-		-- Склад: стол + поверхность с яйцами
-		local stand = newPart({
+		-- ===================== СКЛАД =====================
+		-- деревянный стол
+		newPart({
 			Name = "VaultStand",
-			Size = Vector3.new(10, 3.6, 10),
-			Position = center + Vector3.new(0, 2.2, 0),
-			Color = Color3.fromRGB(112, 88, 62),
+			Size = Vector3.new(11, 3.6, 11),
+			CFrame = CFrame.new(center + Vector3.new(0, 2.6, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.DirtDark,
 			Material = Enum.Material.WoodPlanks,
 			CanCollide = true,
-		})
-		stand.Parent = model
+		}, model)
 
 		local vaultTop = newPart({
 			Name = "VaultTop",
-			Size = Vector3.new(9.4, 0.6, 9.4),
-			Position = center + Vector3.new(0, 4.3, 0),
-			Color = Color3.fromRGB(148, 118, 84),
+			Size = Vector3.new(10.4, 0.9, 10.4),
+			CFrame = CFrame.new(center + Vector3.new(0, 4.9, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.WoodLight,
 			Material = Enum.Material.WoodPlanks,
 			CanCollide = true,
-		})
-		vaultTop.Parent = model
+		}, model)
 
 		local vaultGlow = newPart({
 			Name = "VaultGlow",
-			Size = Vector3.new(10.2, 0.22, 10.2),
-			Position = center + Vector3.new(0, 4.68, 0),
-			Color = Config.Colors.Vault,
+			Size = Vector3.new(11.4, 0.3, 11.4),
+			CFrame = CFrame.new(center + Vector3.new(0, 5.3, 0)) * CFrame.Angles(0, -angle, 0),
+			Color = PALETTE.Gold,
 			Material = Enum.Material.Neon,
 			CanCollide = false,
 			CanQuery = false,
-		})
-		vaultGlow.Parent = model
+		}, model)
 
-		local _, vaultLabel = makeBillboard(vaultTop, "🏦 0", Color3.fromRGB(255, 226, 140), UDim2.fromOffset(240, 44), Vector3.new(0, 3.4, 0))
-		local stealPrompt = makePrompt(vaultTop, "Украсть яйца", "Чужой склад", 12, Config.RaidHoldTime)
+		local _, vaultLabel = makeBillboard(
+			vaultTop, "🏦 0", Color3.fromRGB(255, 232, 156), UDim2.fromOffset(300, 52), Vector3.new(0, 3.6, 0)
+		)
 
-		-- Декоративные украшения базы
-		for side = 1, 2 do
-			local sideAngle = angle + (side == 1 and 0.45 or -0.45)
-			local sidePos = Vector3.new(math.cos(sideAngle), 0, math.sin(sideAngle)) * (Config.BaseRingRadius + Config.BaseZoneRadius - 2)
-			local crate = newPart({
-				Name = "Crate",
-				Size = Vector3.new(3, 3, 3),
-				Position = sidePos + Vector3.new(0, 1.9, 0),
-				Color = Color3.fromRGB(124, 96, 64),
-				Material = Enum.Material.WoodPlanks,
-				CanCollide = true,
-			})
-			crate.CFrame = crate.CFrame * CFrame.Angles(0, math.rad(side * 22 + index * 7), 0)
-			crate.Parent = model
+		local stealPrompt = makePrompt(vaultTop, "Украсть яйца", "Чужой склад", 13, Config.RaidHoldTime)
+
+		-- ===================== ВЫВЕСКА =====================
+		local signPos = center + inward * (zoneR - 1)
+
+		newPart({
+			Name = "SignPost",
+			Size = Vector3.new(1.1, 15, 1.1),
+			CFrame = CFrame.new(signPos + Vector3.new(0, 8, 0)),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.Wood,
+			CanCollide = true,
+		}, model)
+
+		local signBoard = newPart({
+			Name = "SignBoard",
+			Size = Vector3.new(15, 6, 0.9),
+			CFrame = CFrame.new(signPos + Vector3.new(0, 16, 0), Vector3.new(0, signPos.Y + 16, 0)),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = false,
+		}, model)
+
+		local _, signLabel = makeBillboard(
+			signBoard, "Свободная база", Color3.new(1, 1, 1), UDim2.fromOffset(360, 74), Vector3.new(0, 0, 0.7)
+		)
+
+		-- ===================== ЗАБОР =====================
+		local fenceSegments = 14
+		for fence = 1, fenceSegments do
+			local fenceAngle = (fence / fenceSegments) * math.pi * 2
+			local fencePoint = center + Vector3.new(
+				math.cos(fenceAngle) * (zoneR + 1.4),
+				1.1,
+				math.sin(fenceAngle) * (zoneR + 1.4)
+			)
+
+			-- оставляем проход со стороны рынка
+			local toMarket = (Math and 0) or 0
+			local angleToMarket = math.atan2(-center.Z, -center.X)
+			local diff = math.abs(((fenceAngle - angleToMarket + math.pi) % (math.pi * 2)) - math.pi)
+
+			if diff > 0.42 then
+				newPart({
+					Name = "FencePost",
+					Size = Vector3.new(0.7, 3.4, 0.7),
+					CFrame = CFrame.new(fencePoint),
+					Color = PALETTE.WoodDark,
+					Material = Enum.Material.Wood,
+					CanCollide = false,
+					CanQuery = false,
+				}, model)
+			end
 		end
 
-		-- Персональный маркер: каждый клиент видит его только над своей базой
-		local marker = newPart({
-			Name = "MyBaseMarker",
-			Size = Vector3.new(7, 7, 7),
-			Position = center + Vector3.new(0, 40, 0),
-			Color = Config.Colors.MyBase,
+		-- ===================== ЯЩИКИ И БОЧКИ =====================
+		for crate = 1, 3 do
+			local side = (crate == 1) and 1 or -1
+			local crateAngle = angle + side * (0.5 + crate * 0.12)
+			local cratePoint = ringPoint(Config.BaseRingRadius + zoneR - 3, crateAngle, 0)
+
+			if crate == 3 then
+				-- бочка
+				shapePart("Cylinder", 3.2, 4.2, {
+					Name = "Barrel",
+					CFrame = CFrame.new(cratePoint + Vector3.new(0, 3, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+					Color = PALETTE.WoodDeep or PALETTE.Wood,
+					Material = Enum.Material.Wood,
+					CanCollide = true,
+				}, model)
+			else
+				newPart({
+					Name = "Crate",
+					Size = Vector3.new(3.4, 3.4, 3.4),
+					CFrame = CFrame.new(cratePoint + Vector3.new(0, 2.5, 0))
+						* CFrame.Angles(0, math.rad(crate * 24 + index * 13), 0),
+					Color = PALETTE.Wood,
+					Material = Enum.Material.WoodPlanks,
+					CanCollide = true,
+				}, model)
+			end
+		end
+
+		-- ===================== КОСТЁР =====================
+		local firePos = center + ringPoint(zoneR + 7, angle + 0.7, 0) - center
+		firePos = center + Vector3.new(firePos.X, 0, firePos.Z)
+
+		local fireBase = shapePart("Cylinder", 4.6, 0.9, {
+			Name = "CampfireBase",
+			CFrame = CFrame.new(firePos + Vector3.new(0, 0.7, 0)),
+			Color = PALETTE.Stone,
+			Material = Enum.Material.Cobblestone,
+			CanCollide = false,
+		}, model)
+
+		local flame = shapePart("Ball", 1.9, 1.9, {
+			Name = "Flame",
+			Position = firePos + Vector3.new(0, 2.2, 0),
+			Color = Color3.fromRGB(255, 146, 46),
 			Material = Enum.Material.Neon,
-			Transparency = 0.35,
 			CanCollide = false,
 			CanQuery = false,
-		})
-		marker.Shape = Enum.PartType.Ball
-		marker.Transparency = 1
-		marker.Parent = model
+		}, model)
+
+		local fireLight = Instance.new("PointLight")
+		fireLight.Color = Color3.fromRGB(255, 156, 60)
+		fireLight.Range = 26
+		fireLight.Brightness = 2
+		fireLight.Parent = flame
+
+		-- поленья
+		for log = 1, 4 do
+			local logAngle = (log / 4) * math.pi * 2
+			newPart({
+				Name = "Log",
+				Size = Vector3.new(1.1, 1.1, 4.6),
+				CFrame = CFrame.new(firePos + Vector3.new(math.cos(logAngle) * 1.4, 1.2, math.sin(logAngle) * 1.4))
+					* CFrame.Angles(math.rad(20), logAngle, 0),
+				Color = PALETTE.WoodDark,
+				Material = Enum.Material.Wood,
+				CanCollide = false,
+				CanQuery = false,
+			}, model)
+		end
+
+			-- костёр регистрируем для анимации мерцания
+		table.insert(Map.AnimatedFlames, flame)
+		table.insert(Map.AnimatedFires, fireLight)
+
+		-- ===================== МАРКЕР «МОЯ БАЗА» =====================
+		local marker = shapePart("Ball", 6, 6, {
+			Name = "MyBaseMarker",
+			Position = center + Vector3.new(0, 44, 0),
+			Color = Config.Colors.MyBase,
+			Material = Enum.Material.Neon,
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+		}, model)
 
 		local markerGui = Instance.new("BillboardGui")
 		markerGui.Name = "MarkerGui"
-		markerGui.Size = UDim2.fromOffset(220, 54)
-		markerGui.StudsOffset = Vector3.new(0, 6, 0)
+		markerGui.Size = UDim2.fromOffset(240, 58)
+		markerGui.StudsOffset = Vector3.new(0, 6.5, 0)
 		markerGui.AlwaysOnTop = true
 		markerGui.MaxDistance = 900
 		markerGui.LightInfluence = 0
@@ -427,7 +842,7 @@ function Map.build()
 		markerLabel.Text = "МОЯ БАЗА"
 		markerLabel.TextScaled = true
 		markerLabel.TextColor3 = Config.Colors.MyBase
-		markerLabel.TextStrokeTransparency = 0.2
+		markerLabel.TextStrokeTransparency = 0.15
 		markerLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 		markerLabel.Parent = markerGui
 
@@ -438,134 +853,454 @@ function Map.build()
 			Platform = platform,
 			Glow = glow,
 			SignLabel = signLabel,
-			Marker = marker,
-			MarkerGui = markerGui,
 			VaultTop = vaultTop,
 			VaultGlow = vaultGlow,
 			VaultLabel = vaultLabel,
 			StealPrompt = stealPrompt,
-			Owners = {},          -- массив Player
-			Vault = {},           -- [typeName] = count
+			Marker = marker,
+			MarkerGui = markerGui,
+			Owners = {},
+			Vault = {},
 			VaultTotal = 0,
 			VisualEggs = {},
-			IncomeAccum = 0,
+			RateAccum = {},
 			IncomePerSecond = 0,
+			FirePos = firePos,
 		})
 	end
 
+	return bases
+end
+
+-- ============================================================
+-- ПРИРОДА
+-- ============================================================
+
+local function buildTree(folder, position, scale)
+	scale = scale or 1
+
+	local trunkHeight = (9 + RNG:NextNumber() * 7) * scale
+	local trunkWidth = (2.4 + RNG:NextNumber() * 1.2) * scale
+
+	local tree = Instance.new("Model")
+	tree.Name = "Tree"
+	tree.Parent = folder
+
+	-- ствол
+	shapePart("Cylinder", trunkWidth, trunkHeight, {
+		Name = "Trunk",
+		CFrame = CFrame.new(position + Vector3.new(0, trunkHeight / 2, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = PALETTE.Wood:Lerp(PALETTE.WoodDark, RNG:NextNumber()),
+		Material = Enum.Material.Wood,
+		CanCollide = true,
+	}, tree)
+
+	-- крона из 3 шаров
+	local leafColors = { PALETTE.LeafA, PALETTE.LeafB, PALETTE.LeafC }
+
+	for layer = 1, 3 do
+		local layerSize = (10 - layer * 2.2 + RNG:NextNumber() * 1.6) * scale
+
+		shapePart("Ball", layerSize, layerSize, {
+			Name = "Leaves",
+			Position = position + Vector3.new(
+				(RNG:NextNumber() - 0.5) * 2.6 * scale,
+				trunkHeight + (layer - 1) * 2.8 * scale - 1.6 * scale,
+				(RNG:NextNumber() - 0.5) * 2.6 * scale
+			),
+			Color = leafColors[RNG:NextInteger(1, 3)],
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, tree)
+	end
+
+	return tree
+end
+
+local function buildNature(folder)
+	local half = Config.ArenaSize / 2
+
 	-- ===================== ДЕРЕВЬЯ =====================
-	local natureFolder = folder("Nature")
-
-	local maxTreeRadius = halfSize - 16
-	for _ = 1, 30 do
+	local treeCount = 52
+	for i = 1, treeCount do
 		local angle = RNG:NextNumber() * math.pi * 2
-		local radius = Config.BaseRingRadius + 26 + RNG:NextNumber() * (maxTreeRadius - Config.BaseRingRadius - 26)
-		radius = math.min(radius, maxTreeRadius)
-		local position = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		local distance = Config.BaseRingRadius + Config.BaseZoneRadius + 16
+			+ RNG:NextNumber() * (half - Config.BaseRingRadius - Config.BaseZoneRadius - 40)
 
-		local trunkHeight = 7 + RNG:NextNumber() * 6
+		distance = math.min(distance, half - 22)
+		local point = ringPoint(distance, angle, 0)
 
-		local trunk = newPart({
-			Name = "Trunk",
-			Size = Vector3.new(2.2, trunkHeight, 2.2),
-			Color = Color3.fromRGB(98, 70, 48),
-			Material = Enum.Material.Wood,
-			CanCollide = true,
-		})
-		trunk.Shape = Enum.PartType.Cylinder
-		trunk.CFrame = CFrame.new(position + Vector3.new(0, trunkHeight / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
-		trunk.Parent = natureFolder
+		buildTree(folder, point, 0.8 + RNG:NextNumber() * 0.7)
+	end
 
-		for leaf = 1, 3 do
-			local leafSize = 8 - leaf * 1.4 + RNG:NextNumber() * 1.4
-			local crown = newPart({
-				Name = "Crown",
-				Size = Vector3.new(leafSize, leafSize * 0.8, leafSize),
-				Position = position + Vector3.new(
-					(RNG:NextNumber() - 0.5) * 2.5,
-					trunkHeight + (leaf - 1) * 2.6 - 1.5,
-					(RNG:NextNumber() - 0.5) * 2.5
-				),
-				Color = Color3.fromRGB(58, 138, 78):Lerp(Color3.fromRGB(96, 180, 108), RNG:NextNumber()),
-				Material = Enum.Material.Grass,
-				CanCollide = false,
-			})
-			crown.Shape = Enum.PartType.Ball
-			crown.Parent = natureFolder
+	-- пара деревьев внутри кольца баз (для уюта)
+	for i = 1, 8 do
+		local point = Map.randomPointInDisc(Config.BaseRingRadius - Config.BaseZoneRadius - 14)
+		if point.Magnitude > Config.MarketRadius + 12 then
+			buildTree(folder, point, 0.7 + RNG:NextNumber() * 0.5)
 		end
 	end
 
-	-- ===================== ТАБЛО ЛИДЕРОВ =====================
-	local boardStand = newPart({
+	-- ===================== КАМНИ =====================
+	for i = 1, 60 do
+		local angle = RNG:NextNumber() * math.pi * 2
+		local distance = Config.MarketRadius + 14 + RNG:NextNumber() * (half - Config.MarketRadius - 40)
+		local point = ringPoint(distance, angle, 0)
+
+		local rockSize = 2 + RNG:NextNumber() * 5
+		shapePart("Ball", rockSize, rockSize, {
+			Name = "Rock",
+			CFrame = CFrame.new(point + Vector3.new(0, rockSize / 3, 0))
+				* CFrame.Angles(RNG:NextNumber(), RNG:NextNumber(), RNG:NextNumber()),
+			Color = PALETTE.Rock:Lerp(PALETTE.Stone, RNG:NextNumber()),
+			Material = Enum.Material.Rock,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- ===================== КУСТЫ =====================
+	for i = 1, 80 do
+		local angle = RNG:NextNumber() * math.pi * 2
+		local distance = Config.MarketRadius + 10 + RNG:NextNumber() * (half - Config.MarketRadius - 30)
+		local point = ringPoint(distance, angle, 0)
+
+		local bushSize = 1.8 + RNG:NextNumber() * 2.2
+		shapePart("Ball", bushSize, bushSize, {
+			Name = "Bush",
+			CFrame = CFrame.new(point + Vector3.new(0, bushSize / 2.4, 0))
+				* CFrame.Angles(RNG:NextNumber(), RNG:NextNumber(), RNG:NextNumber()),
+			Color = PALETTE.LeafC:Lerp(PALETTE.LeafA, RNG:NextNumber()),
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- ===================== ЦВЕТЫ =====================
+	local flowerColors = {
+		Color3.fromRGB(255, 120, 140),
+		Color3.fromRGB(255, 216, 96),
+		Color3.fromRGB(196, 132, 255),
+		Color3.fromRGB(120, 200, 255),
+		Color3.fromRGB(255, 255, 255),
+	}
+
+	for i = 1, 140 do
+		local angle = RNG:NextNumber() * math.pi * 2
+		local distance = Config.MarketRadius + 8 + RNG:NextNumber() * (half - Config.MarketRadius - 30)
+		local point = ringPoint(distance, angle, 0)
+
+		shapePart("Ball", 0.75, 0.75, {
+			Name = "Flower",
+			Position = point + Vector3.new(0, 1.1, 0),
+			Color = flowerColors[RNG:NextInteger(1, #flowerColors)],
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- ===================== ПРУД =====================
+	local pondPos = Vector3.new(-Config.BaseRingRadius - 8, 0, Config.BaseRingRadius - 30)
+
+	newDisc({
+		Name = "PondEdge",
+		Radius = 24,
+		Height = 0.8,
+		Position = pondPos + Vector3.new(0, 0.4, 0),
+		Color = PALETTE.SandDark,
+		Material = Enum.Material.Sand,
+		CanCollide = false,
+		CanQuery = false,
+	}, folder)
+
+	local pond = newDisc({
+		Name = "PondWater",
+		Radius = 21,
+		Height = 0.5,
+		Position = pondPos + Vector3.new(0, 0.55, 0),
+		Color = PALETTE.Water,
+		Material = Enum.Material.Glass,
+		CanCollide = false,
+		CanQuery = false,
+	}, folder)
+	pond.Transparency = 0.25
+
+	-- камыши
+	for i = 1, 12 do
+		local a = RNG:NextNumber() * math.pi * 2
+		local r = 19 + RNG:NextNumber() * 3
+		newPart({
+			Name = "Reed",
+			Size = Vector3.new(0.34, 3 + RNG:NextNumber() * 2, 0.34),
+			Position = pondPos + Vector3.new(math.cos(a) * r, 2, math.sin(a) * r),
+			Color = PALETTE.LeafC,
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+end
+
+-- ============================================================
+-- Освещение и атмосфера
+-- ============================================================
+
+local function setupLighting()
+	Lighting.Ambient = Color3.fromRGB(104, 110, 136)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 180)
+	Lighting.Brightness = 2.6
+	Lighting.ClockTime = 14.6
+	Lighting.EnvironmentDiffuseScale = 0.45
+	Lighting.EnvironmentSpecularScale = 0.45
+	Lighting.GlobalShadows = true
+	Lighting.FogEnd = 1800
+	Lighting.FogStart = 700
+	Lighting.ShadowSoftness = 0.4
+
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Parent = Lighting
+	end
+	atmosphere.Density = 0.28
+	atmosphere.Offset = 0.18
+	atmosphere.Color = Color3.fromRGB(212, 220, 238)
+	atmosphere.Decay = Color3.fromRGB(126, 148, 190)
+	atmosphere.Glare = 0.2
+	atmosphere.Haze = 1.1
+
+	-- Blur и Bloom делают картинку «дороже»
+	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
+	if not bloom then
+		bloom = Instance.new("BloomEffect")
+		bloom.Parent = Lighting
+	end
+	bloom.Intensity = 0.55
+	bloom.Size = 24
+	bloom.Threshold = 1.05
+
+	local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	if not colorCorrection then
+		colorCorrection = Instance.new("ColorCorrectionEffect")
+		colorCorrection.Parent = Lighting
+	end
+	colorCorrection.Brightness = 0.02
+	colorCorrection.Contrast = 0.12
+	colorCorrection.Saturation = 0.14
+	colorCorrection.TintColor = Color3.fromRGB(255, 250, 244)
+
+	local sunRays = Lighting:FindFirstChildOfClass("SunRaysEffect")
+	if not sunRays then
+		sunRays = Instance.new("SunRaysEffect")
+		sunRays.Parent = Lighting
+	end
+	sunRays.Intensity = 0.12
+	sunRays.Spread = 0.9
+end
+
+-- ============================================================
+-- Табло лидеров
+-- ============================================================
+
+local function buildLeaderboard(folder, position, facing)
+	local stand = newPart({
 		Name = "LeaderboardStand",
-		Size = Vector3.new(1.4, 16, 1.4),
-		Position = Vector3.new(-Config.MarketRadius - 8, 8, 0),
-		Color = Color3.fromRGB(50, 45, 42),
+		Size = Vector3.new(1.6, 20, 1.6),
+		Position = position + Vector3.new(0, 10, 0),
+		Color = PALETTE.StoneDark,
 		Material = Enum.Material.Metal,
 		CanCollide = true,
-	})
-	boardStand.Parent = marketFolder
+	}, folder)
 
 	local board = newPart({
 		Name = "Leaderboard",
-		Size = Vector3.new(18, 12, 1),
-		Position = Vector3.new(-Config.MarketRadius - 8, 20, 0),
-		Color = Color3.fromRGB(24, 26, 34),
+		Size = Vector3.new(24, 15, 1.2),
+		CFrame = CFrame.new(position + Vector3.new(0, 25, 0), facing),
+		Color = Color3.fromRGB(24, 28, 38),
 		Material = Enum.Material.SmoothPlastic,
 		CanCollide = false,
-	})
-	board.CFrame = CFrame.new(board.Position, Vector3.new(0, board.Position.Y, 0))
-	board.Parent = marketFolder
+	}, folder)
 
 	local surface = Instance.new("SurfaceGui")
 	surface.Name = "BoardGui"
 	surface.Face = Enum.NormalId.Front
-	surface.CanvasSize = Vector2.new(600, 400)
+	surface.CanvasSize = Vector2.new(640, 400)
 	surface.LightInfluence = 0
 	surface.Adornee = board
 	surface.Parent = board
 
-	local boardFrame = Instance.new("Frame")
-	boardFrame.Size = UDim2.fromScale(1, 1)
-	boardFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
-	boardFrame.BorderSizePixel = 0
-	boardFrame.Parent = surface
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundColor3 = Color3.fromRGB(16, 19, 27)
+	frame.BorderSizePixel = 0
+	frame.Parent = surface
 
-	local boardTitle = Instance.new("TextLabel")
-	boardTitle.Size = UDim2.new(1, 0, 0.18, 0)
-	boardTitle.BackgroundTransparency = 1
-	boardTitle.Font = Enum.Font.GothamBlack
-	boardTitle.Text = "🏆 ЛУЧШИЕ ВОРЫ ЯИЦ"
-	boardTitle.TextScaled = true
-	boardTitle.TextColor3 = Color3.fromRGB(255, 214, 90)
-	boardTitle.Parent = boardFrame
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0.16, 0)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBlack
+	title.Text = "🏆 ЛУЧШИЕ ВОРЫ ЯИЦ"
+	title.TextScaled = true
+	title.TextColor3 = PALETTE.Gold
+	title.Parent = frame
 
-	local boardList = Instance.new("TextLabel")
-	boardList.Position = UDim2.new(0.05, 0, 0.2, 0)
-	boardList.Size = UDim2.new(0.9, 0, 0.78, 0)
-	boardList.BackgroundTransparency = 1
-	boardList.Font = Enum.Font.GothamBold
-	boardList.TextXAlignment = Enum.TextXAlignment.Left
-	boardList.TextYAlignment = Enum.TextYAlignment.Top
-	boardList.TextSize = 24
-	boardList.TextWrapped = true
-	boardList.TextColor3 = Color3.fromRGB(235, 240, 255)
-	boardList.Text = "Ждём игроков..."
-	boardList.Parent = boardFrame
+	local list = Instance.new("TextLabel")
+	list.Position = UDim2.new(0.05, 0, 0.19, 0)
+	list.Size = UDim2.new(0.9, 0, 0.76, 0)
+	list.BackgroundTransparency = 1
+	list.Font = Enum.Font.GothamBold
+	list.TextXAlignment = Enum.TextXAlignment.Left
+	list.TextYAlignment = Enum.TextYAlignment.Top
+	list.TextSize = 22
+	list.TextWrapped = true
+	list.TextColor3 = Color3.fromRGB(238, 242, 255)
+	list.Text = "Ждём игроков..."
+	list.Parent = frame
+
+	return list
+end
+
+-- ============================================================
+-- ГЛАВНАЯ СБОРКА
+-- ============================================================
+
+function Map.build()
+	local oldMap = Workspace:FindFirstChild("EggGame")
+	if oldMap then
+		oldMap:Destroy()
+	end
+
+	-- Убираем всё лишнее: стандартные объекты и статичное превью мира,
+	-- которое лежало в файле для отображения без запуска игры
+	for _, child in ipairs(Workspace:GetChildren()) do
+		local name = child.Name
+		if name == "Baseplate"
+			or name == "SpawnLocation"
+			or name == "FallbackFloor"
+			or name == "FallbackSpawn"
+			or name == "EggGamePreview" then
+			child:Destroy()
+		end
+	end
+
+	setupLighting()
+
+	local root = Instance.new("Folder")
+	root.Name = "EggGame"
+	root.Parent = Workspace
+
+	local function folder(name)
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = root
+		return f
+	end
+
+	local terrainFolder = folder("Terrain")
+	local marketFolder = folder("Market")
+	local basesFolder = folder("Bases")
+	local natureFolder = folder("Nature")
+	local eggsFolder = folder("Eggs")
+	local vaultEggsFolder = folder("VaultEggs")
+	local carriedFolder = folder("Carried")
+
+	buildTerrain(terrainFolder)
+	buildMarket(marketFolder)
+
+	local bases = buildBases(basesFolder)
+
+	buildNature(natureFolder)
+
+	-- Табло ставим сбоку от рынка, лицом к спавну
+	local boardPos = Vector3.new(-Config.MarketRadius - 14, 0, 4)
+	local leaderboardList = buildLeaderboard(
+		marketFolder,
+		boardPos,
+		Vector3.new(0, boardPos.Y + 25, 0)
+	)
 
 	return {
 		Root = root,
-		Arena = arenaFolder,
+		Terrain = terrainFolder,
 		Market = marketFolder,
 		BasesFolder = basesFolder,
+		Nature = natureFolder,
 		Eggs = eggsFolder,
 		VaultEggs = vaultEggsFolder,
 		Carried = carriedFolder,
-		Nature = natureFolder,
 		BasesData = bases,
 		MarketCenter = Vector3.new(0, 0, 0),
-		LeaderboardList = boardList,
+		LeaderboardList = leaderboardList,
 	}
+end
+
+-- ============================================================
+-- АНИМАЦИЯ МИРА
+-- ============================================================
+
+--[[
+	Одна функция на весь мир: вращает статую, мерцает кострами,
+	пульсирует фонарями. Запускается один раз, работает на RunService.
+
+	CFrame статуи и Transparency меняются на сервере — клиенты видят
+	результат без задержек, потому что части Anchored.
+]]
+function Map.startAnimations()
+	local RunService = game:GetService("RunService")
+
+	local elapsed = 0
+
+	-- Базовые значения, чтобы мерцание было вокруг них
+	local fireBase = {}
+	for index, light in ipairs(Map.AnimatedFires) do
+		fireBase[index] = light.Brightness or 1.5
+	end
+
+	local lanternBase = {}
+	for index, bulb in ipairs(Map.AnimatedLanterns) do
+		lanternBase[index] = bulb.Color or PALETTE.LanternGlow
+	end
+
+	RunService.Heartbeat:Connect(function(dt)
+		elapsed += dt
+
+		-- 1. Статуя медленно вращается
+		local statue = Map.Statue
+		if statue and statue.Parent then
+			statue.CFrame = CFrame.new(statue.Position)
+				* CFrame.Angles(0, elapsed * 0.55, math.rad(12 * math.sin(elapsed * 0.6)))
+		end
+
+		-- 2. Костры мерцают (яркость + лёгкое покачивание)
+		for index, light in ipairs(Map.AnimatedFires) do
+			if light.Parent then
+				local base = fireBase[index] or 1.5
+				local wobble = math.sin(elapsed * 7.3 + index * 1.7) * 0.28
+					+ math.sin(elapsed * 13.1 + index * 2.9) * 0.14
+				light.Brightness = math.max(0.2, base + wobble)
+			end
+		end
+
+		-- 3. Пламя чуть «дышит»
+		for index, flame in ipairs(Map.AnimatedFlames) do
+			if flame.Parent then
+				local pulse = 1 + math.sin(elapsed * 5.5 + index * 2.1) * 0.09
+				flame.Size = Vector3.new(1.9, 1.9, 1.9) * pulse
+			end
+		end
+
+		-- 4. Лампочки гирлянды плавно перемигиваются
+		for index, bulb in ipairs(Map.AnimatedLanterns) do
+			if bulb.Parent then
+				local base = lanternBase[index] or PALETTE.LanternGlow
+				local phase = math.sin(elapsed * 2.2 + index * 0.9) * 0.5 + 0.5
+				bulb.Color = base:Lerp(Color3.fromRGB(255, 252, 236), phase * 0.45)
+			end
+		end
+	end)
 end
 
 return Map

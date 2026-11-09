@@ -69,11 +69,11 @@ Config.EggTypes = {
 
 -- ===================== КАРТА =====================
 
-Config.ArenaSize = 340
-Config.MarketRadius = 34
+Config.ArenaSize = 400
+Config.MarketRadius = 36
 Config.BasesCount = 16
-Config.BaseRingRadius = 116
-Config.BaseZoneRadius = 14
+Config.BaseRingRadius = 134
+Config.BaseZoneRadius = 15
 
 -- ===================== ПОДБОР / КРАЖА =====================
 

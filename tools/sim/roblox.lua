@@ -54,6 +54,26 @@ vecMeta.__index = function(self, key)
 		local m = math.sqrt(self.X * self.X + self.Y * self.Y + self.Z * self.Z)
 		if m == 0 then return M.Vector3.new(0, 0, 0) end
 		return M.Vector3.new(self.X / m, self.Y / m, self.Z / m)
+	elseif key == "Lerp" then
+		return function(a, b, alpha)
+			return M.Vector3.new(
+				a.X + (b.X - a.X) * alpha,
+				a.Y + (b.Y - a.Y) * alpha,
+				a.Z + (b.Z - a.Z) * alpha
+			)
+		end
+	elseif key == "Cross" then
+		return function(a, b)
+			return M.Vector3.new(
+				a.Y * b.Z - a.Z * b.Y,
+				a.Z * b.X - a.X * b.Z,
+				a.X * b.Y - a.Y * b.X
+			)
+		end
+	elseif key == "Dot" then
+		return function(a, b)
+			return a.X * b.X + a.Y * b.Y + a.Z * b.Z
+		end
 	end
 	return nil
 end
@@ -133,13 +153,21 @@ end
 
 M.CFrame = {
 	new = function(x, y, z)
+		-- CFrame.new(position) или CFrame.new(position, lookAt)
 		if type(x) == "table" then
 			return setmetatable({ X = x.X or 0, Y = x.Y or 0, Z = x.Z or 0, __isCFrame = true }, cfMeta)
+		end
+		-- CFrame.new(x, y, z) — но y может быть таблицей (lookAt)
+		if type(y) == "table" then
+			return setmetatable({ X = x or 0, Y = 0, Z = z or 0, __isCFrame = true }, cfMeta)
 		end
 		return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0, __isCFrame = true }, cfMeta)
 	end,
 	Angles = function()
 		return setmetatable({ X = 0, Y = 0, Z = 0, __isCFrame = true }, cfMeta)
+	end,
+	lookAt = function(from, to)
+		return M.CFrame.new(from)
 	end,
 }
 

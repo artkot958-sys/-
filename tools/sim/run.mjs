@@ -132,6 +132,15 @@ local game = S.game
 local workspace = S.workspace
 local shared = {}
 
+-- Имитируем превью мира, которое лежит в .rbxlx
+local preview = Instance.new("Folder", workspace)
+preview.Name = "EggGamePreview"
+local previewTerrain = Instance.new("Folder", preview)
+previewTerrain.Name = "Terrain"
+
+local fallbackFloor = Instance.new("Part", workspace)
+fallbackFloor.Name = "FallbackFloor"
+
 -- ============================================================
 -- ИМИТАЦИЯ ДЕРЕВА ОБЪЕКТОВ
 -- ============================================================
@@ -246,6 +255,13 @@ if not root then
   error("Карта EggGame НЕ создана в Workspace", 0)
 end
 
+if workspace:FindFirstChild("EggGamePreview") then
+  print("✗ Превью не удалено после запуска — будут двойные объекты!")
+  error("Превью не удалено", 0)
+else
+  print("✓ Превью удалено, живая арена построена")
+end
+
 print("✓ Карта создана")
 
 local function childrenOf(instance)
@@ -279,7 +295,7 @@ local function check(name, minCount)
 end
 
 local failed = false
-failed = not check("Arena", 5) or failed
+failed = not check("Terrain", 5) or failed
 failed = not check("Eggs", 5) or failed
 failed = not check("Bases", 16) or failed
 failed = not check("Nature", 10) or failed
