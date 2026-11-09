@@ -69,6 +69,11 @@ local Core = require(findModule("EggGameCore"))
 
 local mapData = Map.build()
 
+if not mapData then
+	warn("[EggGame] ❌ Map.build() вернул nil — карта не построена")
+	mapData = { BasesData = {} }
+end
+
 -- ============================================================
 -- 2. REMOTES
 -- ============================================================

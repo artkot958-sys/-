@@ -80,6 +80,17 @@ local PALETTE = {
 -- ХЕЛПЕРЫ
 -- ============================================================
 
+-- Служебные ключи: ими управляют newDisc/shapePart, у Part таких свойств НЕТ.
+-- Если попытаться записать их в Part, Roblox падает с ошибкой
+-- "Radius is not a valid member of Part" и вся карта не строится.
+local INTERNAL_KEYS = {
+	Radius = true,
+	Height = true,
+	Position = true,
+	CFrame = true,
+	Size = true,
+}
+
 local function newPart(props, parent)
 	local part = Instance.new("Part")
 	part.Anchored = true
@@ -87,8 +98,21 @@ local function newPart(props, parent)
 	part.Material = Enum.Material.SmoothPlastic
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
+
 	for key, value in pairs(props) do
-		part[key] = value
+		if not INTERNAL_KEYS[key] then
+			part[key] = value
+		end
+	end
+
+	if props.CFrame then
+		part.CFrame = props.CFrame
+	elseif props.Position then
+		part.CFrame = CFrame.new(props.Position)
+	end
+
+	if props.Size then
+		part.Size = props.Size
 	end
 	if parent then
 		part.Parent = parent
@@ -1663,7 +1687,11 @@ function Map.build()
 		end
 	end
 
-	setupLighting()
+	-- Освещение не должно ронять всю карту, если какой-то эффект недоступен
+	local lightOk, lightErr = pcall(setupLighting)
+	if not lightOk then
+		warn("[EggGame] ✗ Освещение — " .. tostring(lightErr))
+	end
 
 	local root = Instance.new("Folder")
 	root.Name = "EggGame"
@@ -1684,19 +1712,36 @@ function Map.build()
 	local vaultEggsFolder = folder("VaultEggs")
 	local carriedFolder = folder("Carried")
 
-	buildTerrain(terrainFolder)
-	buildMarket(marketFolder)
+	--[[
+		Каждый этап обёрнут в pcall: если один упадёт, остальные всё равно
+		построятся, а в Output будет видно точное место ошибки.
+		Без этого одна мелкая ошибка оставляла игрока на пустом поле.
+	]]
+	local function step(name, fn)
+		local ok, result = pcall(fn)
+		if ok then
+			print("[EggGame] ✓ " .. name)
+			return result
+		end
+		warn("[EggGame] ✗ " .. name .. " — " .. tostring(result))
+		return nil
+	end
 
-	local bases = buildBases(basesFolder)
+	step("Местность", function() return buildTerrain(terrainFolder) end)
+	step("Рынок", function() return buildMarket(marketFolder) end)
 
-	buildNature(natureFolder)
+	local bases = step("Базы", function() return buildBases(basesFolder) end) or {}
+
+	step("Природа", function() return buildNature(natureFolder) end)
 
 	-- Магазин на входе с рынка, лицом к центру
-	local shopData = buildShopBuilding(
-		marketFolder,
-		Vector3.new(0, 0, -Config.MarketRadius - 12),
-		0
-	)
+	local shopData = step("Магазин", function()
+		return buildShopBuilding(
+			marketFolder,
+			Vector3.new(0, 0, -Config.MarketRadius - 12),
+			0
+		)
+	end)
 
 	-- Табло ставим сбоку от рынка, лицом к спавну
 	local boardPos = Vector3.new(-Config.MarketRadius - 14, 0, 4)

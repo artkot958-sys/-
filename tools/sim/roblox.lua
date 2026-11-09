@@ -492,6 +492,19 @@ InstanceMeta.__newindex = function(self, key, value)
 		return
 	end
 
+	-- СТРОГИЙ РЕЖИМ: Roblox падает при записи несуществующего свойства
+	-- ("Radius is not a valid member of Part"). Заглушка должна вести себя так же,
+	-- иначе баги вида newDisc({Radius=...}) проходят проверку и ломают игру.
+	local className = props.ClassName
+	local allowed = props.__allowed
+	if allowed and not allowed[key] and not props[key] then
+		local msg = string.format(
+			"%s is not a valid member of %s",
+			tostring(key), tostring(className or "Instance")
+		)
+		error(msg, 2)
+	end
+
 	props[key] = value
 end
 
@@ -501,12 +514,34 @@ end
 
 M.Instance = {}
 
+--[[
+	Разрешённые свойства Part в настоящем Roblox.
+	Нужны для строгой проверки: если код пишет свойство, которого у Part нет
+	(например Radius из newDisc), Roblox падает с ошибкой и карта не строится.
+	Заглушка обязана вести себя так же, иначе такие баги незаметны.
+]]
+local PART_PROPS = {
+	Name = true, Parent = true, ClassName = true,
+	Anchored = true, CanCollide = true, CanQuery = true, CanTouch = true,
+	CastShadow = true, Material = true, Color = true, Transparency = true,
+	Reflectance = true, Shape = true, Size = true, CFrame = true,
+	Position = true, Orientation = true, Rotation = true,
+	TopSurface = true, BottomSurface = true,
+	Massless = true, Locked = true, CustomPhysicalProperties = true,
+	AssemblyLinearVelocity = true, AssemblyAngularVelocity = true,
+}
+
 function M.Instance.new(className, parent)
 	instanceCount += 1
 
+	local props = { Parent = nil, ClassName = className }
+	if className == "Part" or className == "MeshPart" or className == "WedgePart" then
+		props.__allowed = PART_PROPS
+	end
+
 	local obj = setmetatable({
 		ClassName = className,
-		_props = { Parent = nil },
+		_props = props,
 		_signals = {},
 		_children = {},
 		_id = instanceCount,
