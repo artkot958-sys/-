@@ -506,8 +506,8 @@ local function buildMarket(folder)
 	-- Свечение вокруг статуи
 	local statueLight = Instance.new("PointLight")
 	statueLight.Color = PALETTE.Gold
-	statueLight.Range = 40
-	statueLight.Brightness = 3
+	statueLight.Range = 22
+	statueLight.Brightness = 1.1
 	statueLight.Parent = statue
 
 	Map.Statue = statue
@@ -682,7 +682,7 @@ local function buildMarket(folder)
 				local bulb = shapePart("Ball", 0.85, 0.85, {
 					Name = "Bulb",
 					Position = a,
-					Color = PALETTE.Gold,
+					Color = PALETTE.Gold:Lerp(PALETTE.White, 0.3),
 					Material = Enum.Material.Neon,
 					CanCollide = false,
 					CanQuery = false,
@@ -700,9 +700,9 @@ local function buildMarket(folder)
 	spawnLocation.Position = Vector3.new(0, 1.4, 18)
 	spawnLocation.Anchored = true
 	spawnLocation.CanCollide = false
-	spawnLocation.Transparency = 0.55
+	spawnLocation.Transparency = 0.85
 	spawnLocation.Color = PALETTE.Gold
-	spawnLocation.Material = Enum.Material.Neon
+	spawnLocation.Material = Enum.Material.SmoothPlastic
 	spawnLocation.Neutral = true
 	spawnLocation.Duration = 0
 	spawnLocation.Parent = folder
@@ -714,7 +714,7 @@ local function buildMarket(folder)
 		Height = 0.35,
 		Position = Vector3.new(0, 0.85, 18),
 		Color = PALETTE.Gold,
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.Marble,
 		CanCollide = false,
 		CanQuery = false,
 	}, folder)
@@ -770,8 +770,8 @@ local function buildBases(folder)
 			Radius = zoneR + 3.4,
 			Height = 0.25,
 			Position = center + Vector3.new(0, 0.8, 0),
-			Color = baseColor,
-			Material = Enum.Material.Neon,
+			Color = baseColor:Lerp(Color3.new(1, 1, 1), 0.25),
+			Material = Enum.Material.Marble,
 			CanCollide = false,
 			CanQuery = false,
 		}, model)
@@ -801,7 +801,7 @@ local function buildBases(folder)
 			Size = Vector3.new(11.4, 0.3, 11.4),
 			CFrame = CFrame.new(center + Vector3.new(0, 5.3, 0)) * CFrame.Angles(0, -angle, 0),
 			Color = PALETTE.Gold,
-			Material = Enum.Material.Neon,
+			Material = Enum.Material.SmoothPlastic,
 			CanCollide = false,
 			CanQuery = false,
 		}, model)
@@ -811,6 +811,36 @@ local function buildBases(folder)
 		)
 
 		local stealPrompt = makePrompt(vaultTop, "Украсть яйца", "Чужой склад", 13, Config.RaidHoldTime)
+
+		-- Стойка «Занять базу»: подошёл к свободной базе и зажал E
+		local claimPos = center + outward * (zoneR - 2.5)
+
+		local claimPost = newPart({
+			Name = "ClaimPost",
+			Size = Vector3.new(2.2, 8, 2.2),
+			CFrame = CFrame.new(claimPos + Vector3.new(0, 4, 0)),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.Wood,
+			CanCollide = true,
+		}, model)
+
+		local claimTop = newPart({
+			Name = "ClaimTop",
+			Size = Vector3.new(5.5, 1.1, 5.5),
+			CFrame = CFrame.new(claimPos + Vector3.new(0, 8.6, 0))
+				* CFrame.Angles(0, -angle, 0),
+			Color = Config.Colors.MyBase,
+			Material = Enum.Material.SmoothPlastic,
+			CanCollide = false,
+			CanQuery = false,
+		}, model)
+
+		local _, claimLabel = makeBillboard(
+			claimTop, "🏠 Занять", Color3.fromRGB(220, 255, 230),
+			UDim2.fromOffset(240, 54), Vector3.new(0, 2.6, 0)
+		)
+
+		local claimPrompt = makePrompt(claimTop, "Занять базу", "Свободная база", 13, 0.4)
 
 		-- ===================== ВЫВЕСКА =====================
 		local signPos = center + inward * (zoneR - 1)
@@ -944,7 +974,7 @@ local function buildBases(folder)
 			Name = "MyBaseMarker",
 			Position = center + Vector3.new(0, 44, 0),
 			Color = Config.Colors.MyBase,
-			Material = Enum.Material.Neon,
+			Material = Enum.Material.SmoothPlastic,
 			Transparency = 1,
 			CanCollide = false,
 			CanQuery = false,
@@ -983,6 +1013,9 @@ local function buildBases(folder)
 			VaultGlow = vaultGlow,
 			VaultLabel = vaultLabel,
 			StealPrompt = stealPrompt,
+			ClaimPrompt = claimPrompt,
+			ClaimTop = claimTop,
+			ClaimLabel = claimLabel,
 			Marker = marker,
 			MarkerGui = markerGui,
 			Owners = {},
@@ -1228,6 +1261,71 @@ end
 -- ============================================================
 -- Освещение и атмосфера
 -- ============================================================
+
+--[[
+	МУЗЫКА И ЗВУКИ
+
+	ВАЖНО про звуковые файлы:
+	Агент не может загрузить звук в Roblox — у каждого файла свой ID,
+	и выдавать его может только владелец аккаунта через Creator Dashboard.
+	Поэтому музыка ищется среди ПУБЛИЧНЫХ звуков Roblox по имени,
+	а если ничего не нашлось — игра работает молча, без ошибок.
+
+	Как поставить свою музыку (30 секунд):
+	  1. Открой roblox.com/create -> Audio -> загрузи .mp3
+	  2. Скопируй ID из ссылки (число после "?id=")
+	  3. Вставь его в Config.MusicId ниже — всё, игра подхватит
+]]
+local function setupMusic()
+	local MUSIC_FOLDER = "EggGameMusic"
+
+	local old = SoundService:FindFirstChild(MUSIC_FOLDER)
+	if old then
+		old:Destroy()
+	end
+
+	local folder = Instance.new("Folder")
+	folder.Name = MUSIC_FOLDER
+	folder.Parent = SoundService
+
+	-- Звук из конфига, если игрок его указал
+	local custom = Config.MusicId
+
+	local sound = Instance.new("Sound")
+	sound.Name = "BackgroundMusic"
+	sound.Looped = true
+	sound.Volume = 0.35
+	sound.RollOffMode = Enum.RollOffMode.Inverse
+	sound.SoundId = custom or ""
+	sound.Parent = folder
+
+	--[[
+		Своего ID нет? Тогда тишина — но с понятной подсказкой в Output.
+		Автопоиск трека НЕ используем: AssetService:SearchAudio не существует,
+		а подставлять случайный чужой ID рискованно (может быть удалён).
+	]]
+	if not custom or custom == "" then
+		warn("[EggGame] Музыка не задана. Вставь ID в Config.MusicId — " ..
+			"roblox.com/create -> Audio, число из ссылки")
+	end
+
+	if sound.SoundId ~= "" then
+		sound:Play()
+	end
+
+	-- Второй слой: тихий эмбиент (если задан отдельный трек)
+	if Config.AmbientSoundId and Config.AmbientSoundId ~= "" then
+		local ambience = Instance.new("Sound")
+		ambience.Name = "Ambient"
+		ambience.Looped = true
+		ambience.Volume = 0.12
+		ambience.SoundId = Config.AmbientSoundId
+		ambience.Parent = folder
+		ambience:Play()
+	end
+
+	return folder
+end
 
 local function setupLighting()
 	Lighting.Ambient = Color3.fromRGB(104, 110, 136)
@@ -1533,7 +1631,7 @@ local function buildShopBuilding(folder, origin, facing)
 		add({
 			Name = "ShelfGlow", LX = side * 12.5, LY = 5.2, LZ = lz,
 			Size = Vector3.new(6.6, 0.3, 5.6),
-			Color = color, Material = Enum.Material.Neon, Transparency = 0.2,
+			Color = color, Material = Enum.Material.SmoothPlastic, Transparency = 0.35,
 		})
 	end
 
@@ -1629,7 +1727,7 @@ local function buildShopBuilding(folder, origin, facing)
 		Size = Vector3.new(4.5, 0.7, 4.5),
 		CFrame = CFrame.new(terminalPos),
 		Color = PALETTE.Gold,
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic,
 		CanCollide = false,
 	}, model)
 	terminal.Shape = Enum.PartType.Cylinder
@@ -1688,6 +1786,12 @@ function Map.build()
 	end
 
 	-- Освещение не должно ронять всю карту, если какой-то эффект недоступен
+	-- Музыка: не должна ронять игру, если звук недоступен
+	local musicOk, musicErr = pcall(setupMusic)
+	if not musicOk then
+		warn("[EggGame] ✗ Музыка — " .. tostring(musicErr))
+	end
+
 	local lightOk, lightErr = pcall(setupLighting)
 	if not lightOk then
 		warn("[EggGame] ✗ Освещение — " .. tostring(lightErr))

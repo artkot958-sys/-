@@ -198,6 +198,10 @@ local function updateBaseVisuals(base)
 	local ownerCount = #owners
 
 	if ownerCount == 0 then
+		if base.ClaimLabel then
+			base.ClaimLabel.Text = "🏠 Занять"
+			base.ClaimTop.Color = Config.Colors.MyBase
+		end
 		base.Platform.Color = Config.Colors.FreeBase
 		base.Glow.Color = Config.Colors.FreeBase
 		base.SignLabel.Text = "Свободная база"
@@ -206,6 +210,17 @@ local function updateBaseVisuals(base)
 		base.VaultTop.Color = Color3.fromRGB(132, 110, 82)
 		base.VaultGlow.Color = Config.Colors.FreeBase
 		return
+	end
+
+	-- Стойка больше не нужна: база занята
+	if base.ClaimLabel then
+		if ownerCount < Config.BaseMaxOwners then
+			base.ClaimLabel.Text = "＋ Подселиться"
+			base.ClaimTop.Color = Color3.fromRGB(255, 210, 110)
+		else
+			base.ClaimLabel.Text = "🔒 Занято"
+			base.ClaimTop.Color = Color3.fromRGB(150, 150, 160)
+		end
 	end
 
 	base.Platform.Color = Config.Colors.MyBase
@@ -345,6 +360,68 @@ function Core.assignBase(player)
 	Core.syncBaseInfo(player)
 
 	return bestBase.Id
+end
+
+--[[
+	Занять конкретную базу.
+	Игрок подходит к стойке и зажимает E. Раньше база выдавалась только
+	автоматически при входе — занять выбранную было нельзя.
+]]
+function Core.claimBase(player, baseId)
+	local base = state.bases[baseId]
+	if not base then
+		return false, "Базы не существует"
+	end
+
+	if not Data.isLoaded(player) then
+		return false, "Данные ещё загружаются"
+	end
+
+	local currentId = state.playerBase[player]
+	if currentId == baseId then
+		return false, "Это уже твоя база"
+	end
+
+	-- Освобождаем прошлую базу этого игрока
+	if currentId then
+		Core.releaseBase(player, true)
+	end
+
+	-- На свободную базу может встать кто угодно
+	local count = #base.Owners
+	if count >= Config.BaseMaxOwners then
+		-- возвращаем игрока на прежнюю базу, чтобы он не остался без склада
+		Core.assignBase(player)
+		return false, string.format("База занята (%d/%d)", count, Config.BaseMaxOwners)
+	end
+
+	table.insert(base.Owners, player)
+	state.playerBase[player] = base.Id
+
+	local data = Data.get(player)
+	if data then
+		data.BaseId = base.Id
+	end
+
+	updateBaseVisuals(base)
+	Core.syncBaseInfo(player)
+	Core.syncCoins(player)
+
+	return true, string.format("Твоя база №%d", base.Id)
+end
+
+-- Нажатие на стойку «Занять базу»
+function Core.onClaimPrompt(player, baseId)
+	local ok, message = Core.claimBase(player, baseId)
+
+	local color
+	if ok then
+		color = Color3.fromRGB(120, 240, 160)
+	else
+		color = Color3.fromRGB(255, 190, 120)
+	end
+
+	Core.notify(player, message, color)
 end
 
 function Core.releaseBase(player, keepPreference)
@@ -1134,6 +1211,13 @@ function Core.init(mapData, remotes)
 		base.StealPrompt.Triggered:Connect(function(player)
 			Core.tryRaid(player, base.Id)
 		end)
+
+		-- Стойка «Занять базу»
+		if base.ClaimPrompt then
+			base.ClaimPrompt.Triggered:Connect(function(player)
+				Core.onClaimPrompt(player, base.Id)
+			end)
+		end
 	end
 
 	-- Наполняем рынок сразу, чтоб не было пусто на старте

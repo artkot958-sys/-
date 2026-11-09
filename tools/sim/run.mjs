@@ -520,6 +520,44 @@ if myBase then
   assertions[#assertions + 1] = { "доход больше нуля", income > 0 }
 end
 
+-- ============ ЗАНЯТИЕ БАЗЫ ============
+print("")
+print("════════ ЗАНЯТИЕ БАЗЫ ════════")
+
+local ctx = Core.getCtx()
+if not ctx then error("Core.getCtx() вернул nil", 0) end
+local oldBaseId = Core.getBaseForPlayerFor(fakePlayer).Id
+print("✓ Было: база №" .. tostring(oldBaseId) .. ", владельцев " .. tostring(#ctx.bases[oldBaseId].Owners))
+print("✓ База №2 до захвата: владельцев " .. tostring(#ctx.bases[2].Owners))
+
+local okClaim, msgClaim = Core.claimBase(fakePlayer, 2)
+
+assertions[#assertions + 1] = { "занять свободную базу №2 (" .. tostring(msgClaim) .. ")", okClaim == true }
+assertions[#assertions + 1] = { "база игрока стала №2", Core.getBaseForPlayerFor(fakePlayer).Id == 2 }
+assertions[#assertions + 1] = { "на базе №2 владельцев " .. #ctx.bases[2].Owners, #ctx.bases[2].Owners >= 1 }
+assertions[#assertions + 1] = { "прежняя база освободилась", #ctx.bases[oldBaseId].Owners == 0 }
+
+local okAgain = Core.claimBase(fakePlayer, 2)
+assertions[#assertions + 1] = { "повторно ту же базу занять нельзя", okAgain == false }
+
+-- База вмещает не больше Config.BaseMaxOwners
+Core.claimBase(thief, 2)
+local third = Instance.new("Player")
+third.Name = "Third"
+third.UserId = 33333
+third.Parent = Players
+Data.load(third)
+Core.assignBase(third)
+local okThird = Core.claimBase(third, 2)
+assertions[#assertions + 1] = {
+  "третий на базу №2 не влезает (макс " .. tostring(Config.BaseMaxOwners) .. ")",
+  okThird == false,
+}
+assertions[#assertions + 1] = { "третий остался при своей базе", Core.getBaseForPlayerFor(third) ~= nil }
+
+print("✓ База №2: владельцев " .. tostring(#ctx.bases[2].Owners))
+print("✓ Игрок при базе: " .. tostring(Core.getBaseForPlayerFor(third).Id))
+
 -- Итог по утверждениям
 print("")
 local failedChecks = 0

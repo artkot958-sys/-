@@ -381,7 +381,7 @@ function buildMarket() {
   // статуя яйца
   parts.push(partXml({
     name: "MarketStatue", size: [4.4, 5.9, 4.4], position: [0, 7.4, 0],
-    color: PALETTE.Gold, material: MATERIAL.Neon, shape: "Ball",
+    color: PALETTE.Gold, material: MATERIAL.Marble, shape: "Ball",
   }));
 
   // шатры
@@ -452,7 +452,7 @@ function buildMarket() {
   // спавн
   parts.push(partXml({
     name: "PreviewSpawn", size: [18, 1.2, 18], position: [0, 1.4, 18],
-    color: PALETTE.Gold, material: MATERIAL.Neon, transparency: 0.55,
+    color: PALETTE.Gold, material: MATERIAL.Marble, transparency: 0.85,
   }));
 
   return folderXml("Market", parts);
@@ -491,7 +491,7 @@ function buildBases() {
     parts.push(partXml({
       name: "Glow", size: [0.25, (BASE_ZONE + 3.4) * 2, (BASE_ZONE + 3.4) * 2],
       position: [cx, 0.8, cz], color: baseColors[(i - 1) % baseColors.length],
-      material: MATERIAL.Neon, shape: "Cylinder",
+      material: MATERIAL.Marble, shape: "Cylinder",
       rotation: [0, 0, Math.PI / 2],
     }));
 
@@ -508,7 +508,7 @@ function buildBases() {
     }));
     parts.push(partXml({
       name: "VaultGlow", size: [11.4, 0.3, 11.4], position: [cx, 5.3, cz],
-      rotation: [0, -angle, 0], color: PALETTE.Gold, material: MATERIAL.Neon,
+      rotation: [0, -angle, 0], color: PALETTE.Gold, material: MATERIAL.SmoothPlastic,
     }));
 
     // вывеска

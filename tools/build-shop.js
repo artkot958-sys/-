@@ -343,7 +343,7 @@ function buildShop(origin = { x: 0, y: 0, z: -70 }, facing = Math.PI) {
     position: local(0, H + 2.5, D / 2 + 0.6),
     rotation: [0, facing, 0],
     color: PALETTE.Gold,
-    material: MATERIAL.Neon,
+    material: MATERIAL.Marble,
     transparency: 0.35,
   });
 

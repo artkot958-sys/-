@@ -186,6 +186,19 @@ Config.SaveFolder = "EggGamePlayerData"
 Config.DataVersion = 1
 Config.AutosaveInterval = 90
 
+-- Сколько игроков может делить одну базу
+Config.BaseMaxOwners = 2
+
+--[[
+	Музыка. Пустая строка = взять публичный трек Roblox автоматически.
+	Свой трек: загрузи .mp3 на roblox.com/create -> Audio,
+	скопируй число из ссылки и вставь сюда: "rbxassetid://1234567890"
+]]
+Config.MusicId = ""
+
+-- Тихий фоновый эмбиент (ветер, природа). Пусто = выключено
+Config.AmbientSoundId = ""
+
 Config.Colors = {
 	Floor = Color3.fromRGB(58, 66, 82),
 	Wall = Color3.fromRGB(38, 44, 56),
