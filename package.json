@@ -18,6 +18,9 @@
   },
   "homepage": "https://github.com/artkot958-sys/-#readme",
   "dependencies": {
-    "luaparse": "^0.3.1"
+    "fengari": "^0.1.5",
+    "luaparse": "^0.3.1",
+    "luau-web": "^1.5.1",
+    "rbxlx-parser": "^1.0.1"
   }
 }

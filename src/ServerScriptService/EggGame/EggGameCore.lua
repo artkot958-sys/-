@@ -20,8 +20,21 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
-local Data = require(script.Parent:WaitForChild("EggGameData"))
-local Map = require(script.Parent:WaitForChild("EggGameMap"))
+local function findModule(name)
+	local direct = script.Parent and script.Parent:FindFirstChild(name)
+	if direct then
+		return direct
+	end
+	local service = game:GetService("ServerScriptService")
+	local anywhere = service:FindFirstChild(name, true)
+	if anywhere then
+		return anywhere
+	end
+	return script.Parent:WaitForChild(name)
+end
+
+local Data = require(findModule("EggGameData"))
+local Map = require(findModule("EggGameMap"))
 
 local Core = {}
 
@@ -115,11 +128,33 @@ end
 -- УВЕДОМЛЕНИЯ
 -- ============================================================
 
-function Core.notify(player, text, color)
-	local remote = state.remotes.Notify
-	if remote and player and player.Parent then
-		remote:FireClient(player, text, color)
+--[[
+	Безопасная отправка на клиент.
+
+	Если remote ещё не создан, или клиент отключился, или (в редких случаях)
+	remote не является RemoteEvent — сервер НЕ должен падать.
+	Любая ошибка здесь не должна ломать игровую логику.
+]]
+local function fireClient(remoteName, player, ...)
+	local remote = state.remotes[remoteName]
+
+	if not remote or not player or not player.Parent then
+		return false
 	end
+
+	local args = table.pack(...)
+	local ok = pcall(function()
+		remote:FireClient(player, table.unpack(args, 1, args.n))
+	end)
+
+	return ok
+end
+
+-- То же для RemoteFunction, отвечающего клиенту
+Core.fireClient = fireClient
+
+function Core.notify(player, text, color)
+	fireClient("Notify", player, text, color)
 end
 
 -- ============================================================
@@ -200,40 +235,25 @@ end
 -- ============================================================
 
 function Core.syncCoins(player)
-	local remote = state.remotes.CoinsUpdate
-	if not remote or not player.Parent then
-		return
-	end
-
 	local base = Core.getBaseForPlayerFor(player)
 	local income = base and getBaseIncomePerSecond(base, player) or 0
 
-	remote:FireClient(player, Data.getCoins(player), income)
+	fireClient("CoinsUpdate", player, Data.getCoins(player), income)
 end
 
 function Core.syncCarried(player)
-	local remote = state.remotes.CarriedUpdate
-	if not remote or not player.Parent then
-		return
-	end
-
 	local carried = getCarried(player)
-	remote:FireClient(player, carried.Count, getBackpackCapacity(player), carried.Types)
+	fireClient("CarriedUpdate", player, carried.Count, getBackpackCapacity(player), carried.Types)
 end
 
 function Core.syncBaseInfo(player)
-	local remote = state.remotes.BaseInfo
-	if not remote or not player.Parent then
-		return
-	end
-
 	local base = Core.getBaseForPlayerFor(player)
 	if not base then
-		remote:FireClient(player, nil)
+		fireClient("BaseInfo", player, nil)
 		return
 	end
 
-	remote:FireClient(player, {
+	fireClient("BaseInfo", player, {
 		BaseId = base.Id,
 		VaultTotal = base.VaultTotal,
 		Capacity = getVaultCapacity(base),
@@ -1154,6 +1174,11 @@ function Core.init(mapData, remotes)
 	startStackLoop()
 
 	return Core
+end
+
+-- Доступ к внутреннему состоянию (для тестов и отладки)
+function Core.getCtx()
+	return state
 end
 
 -- Совместимость: старые вызовы

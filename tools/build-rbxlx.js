@@ -143,6 +143,40 @@ const starterPlayer = item(
 );
 
 // ============================================================
+// WORKSPACE: страховочный пол и точка спавна
+// ============================================================
+// Нужны, чтобы персонаж не падал в пустоту, даже если скрипт
+// по какой-то причине не построит арену.
+// Настоящая арена строится скриптом ВЫШЕ этого пола.
+
+function partItem(name, size, position, colorInt, material) {
+  return item("Part", name, "", [
+    `\t\t\t<bool name="Anchored">true</bool>`,
+    `\t\t\t<Vector3 name="size"><X>${size[0]}</X><Y>${size[1]}</Y><Z>${size[2]}</Z></Vector3>`,
+    `\t\t\t<CoordinateFrame name="CFrame"><X>${position[0]}</X><Y>${position[1]}</Y><Z>${position[2]}</Z>` +
+      `<R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12>` +
+      `<R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>`,
+    `\t\t\t<Color3uint8 name="Color3uint8">${colorInt}</Color3uint8>`,
+    `\t\t\t<token name="Material">${material}</token>`,
+  ]);
+}
+
+const fallbackFloor = partItem("FallbackFloor", [700, 8, 700], [0, -22, 0], 4284045657, 256);
+
+const fallbackSpawn = item("SpawnLocation", "FallbackSpawn", "", [
+  `\t\t\t<bool name="Anchored">true</bool>`,
+  `\t\t\t<Vector3 name="size"><X>24</X><Y>2</Y><Z>24</Z></Vector3>`,
+  `\t\t\t<CoordinateFrame name="CFrame"><X>0</X><Y>4</Y><Z>0</Z>` +
+    `<R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12>` +
+    `<R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>`,
+  `\t\t\t<bool name="Neutral">true</bool>`,
+  `\t\t\t<bool name="Enabled">true</bool>`,
+  `\t\t\t<Color3uint8 name="Color3uint8">4294953543</Color3uint8>`,
+]);
+
+const workspace = item("Workspace", "Workspace", [fallbackFloor, fallbackSpawn].join("\n"));
+
+// ============================================================
 // СБОРКА ФАЙЛА
 // ============================================================
 
@@ -154,7 +188,7 @@ const header = `<?xml version="1.0" encoding="utf-8"?>
 
 const footer = `</roblox>`;
 
-const xml = [header, replicatedStorage, serverScriptService, starterPlayer, footer].join("\n") + "\n";
+const xml = [header, workspace, replicatedStorage, serverScriptService, starterPlayer, footer].join("\n") + "\n";
 
 fs.writeFileSync(OUTPUT, xml, "utf8");
 

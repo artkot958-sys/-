@@ -15,9 +15,53 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("EggGameConfig"))
-local Map = require(script.Parent:WaitForChild("EggGameMap"))
-local Data = require(script.Parent:WaitForChild("EggGameData"))
-local Core = require(script.Parent:WaitForChild("EggGameCore"))
+
+--[[
+	Модули могут лежать двумя способами:
+	  A) в папке EggGame внутри ServerScriptService  (как в готовом .rbxlx)
+	  B) прямо в ServerScriptService                  (если копировал вручную)
+
+	Ищем в обоих местах, чтобы игра запускалась при любой раскладке.
+]]
+local function findModule(name)
+	-- 1. рядом со скриптом (папка EggGame)
+	local sibling = script.Parent and script.Parent:FindFirstChild(name)
+	if sibling then
+		return sibling
+	end
+
+	-- 2. в папке EggGame внутри нашего контейнера
+	local container = script.Parent
+	local folder = container and container:FindFirstChild("EggGame")
+	if folder then
+		local inside = folder:FindFirstChild(name)
+		if inside then
+			return inside
+		end
+	end
+
+	-- 3. где угодно в ServerScriptService (на случай нестандартной раскладки)
+	local service = game:GetService("ServerScriptService")
+	local anywhere = service:FindFirstChild(name, true)
+	if anywhere then
+		return anywhere
+	end
+
+	-- Не нашли — ждём с понятной ошибкой
+	local waited = container and container:WaitForChild(name, 10)
+	if waited then
+		return waited
+	end
+
+	error(string.format(
+		"Не найден модуль %s. Положи EggGameMap, EggGameData и EggGameCore " ..
+		"в папку EggGame внутри ServerScriptService.", name
+	), 0)
+end
+
+local Map = require(findModule("EggGameMap"))
+local Data = require(findModule("EggGameData"))
+local Core = require(findModule("EggGameCore"))
 
 -- ============================================================
 -- 1. КАРТА
