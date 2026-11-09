@@ -11,32 +11,46 @@
  */
 
 const PALETTE = {
-  GrassDark: [64, 122, 62],
-  GrassMid: [84, 146, 76],
-  GrassLight: [104, 168, 88],
-  Sand: [206, 184, 132],
-  SandDark: [178, 154, 104],
-  Stone: [126, 128, 134],
-  StoneDark: [92, 94, 102],
-  Rock: [108, 110, 118],
-  Dirt: [128, 100, 72],
-  DirtDark: [100, 78, 56],
-  Wood: [124, 90, 58],
-  WoodDark: [88, 62, 40],
-  WoodLight: [158, 120, 78],
-  RoofRed: [168, 64, 54],
-  RoofOrange: [206, 112, 48],
-  RoofBlue: [62, 104, 158],
-  Canvas: [232, 218, 186],
-  CanvasDark: [198, 178, 142],
-  Gold: [255, 196, 64],
-  LanternGlow: [255, 212, 132],
-  Water: [78, 152, 196],
-  LeafA: [58, 138, 78],
-  LeafB: [96, 180, 108],
-  LeafC: [44, 112, 66],
-  MyBase: [70, 230, 140],
-  White: [232, 238, 245],
+  // Трава — сочнее и светлее, три оттенка для объёма
+  GrassDark: [96, 178, 92],
+  GrassMid: [124, 204, 108],
+  GrassLight: [158, 226, 132],
+  // Песок — тёплый и яркий
+  Sand: [246, 224, 168],
+  SandDark: [232, 202, 138],
+  // Камень — светлее, чтобы не был «грязным»
+  Stone: [186, 190, 200],
+  StoneDark: [148, 152, 166],
+  Rock: [166, 170, 182],
+  // Земля и дерево
+  Dirt: [188, 148, 106],
+  DirtDark: [156, 118, 80],
+  Wood: [188, 138, 88],
+  WoodDark: [136, 96, 60],
+  WoodLight: [216, 176, 118],
+  // Навесы шатров — сочные, как на карнавале
+  RoofRed: [232, 84, 76],
+  RoofOrange: [250, 152, 56],
+  RoofBlue: [70, 148, 232],
+  RoofTeal: [62, 190, 186],
+  RoofPurple: [164, 108, 232],
+  RoofPink: [244, 116, 168],
+  Canvas: [252, 240, 214],
+  CanvasDark: [226, 206, 168],
+  // Акценты
+  Gold: [255, 208, 72],
+  LanternGlow: [255, 230, 160],
+  Water: [96, 190, 240],
+  LeafA: [88, 186, 106],
+  LeafB: [130, 218, 128],
+  LeafC: [62, 158, 92],
+  LeafDark: [52, 132, 74],
+  LeafMid: [88, 186, 106],
+  LeafLight: [150, 224, 138],
+  LeafAutumn: [246, 168, 68],
+  LeafPink: [250, 156, 190],
+  MyBase: [70, 240, 148],
+  White: [246, 250, 255],
 };
 
 // Материалы Roblox (числовые id)
@@ -105,17 +119,19 @@ function partXml(opts) {
     reflectance = 0,
   } = opts;
 
-  // Для шара/цилиндра Roblox масштабирует по минимальной оси — приводим размер
+  // ВАЖНО: значения Enum.PartType в Roblox:
+  //   Ball = 0, Block = 1, Cylinder = 2, Wedge = 3, CornerWedge = 4
+  // Тег свойства называется "Shape" с большой буквы!
   let finalSize = size;
   let shapeToken = "";
   if (shape === "Ball") {
     const d = Math.min(size[0], size[1], size[2]);
     finalSize = [d, d, d];
-    shapeToken = `<token name="shape">2</token>`;
+    shapeToken = `<token name="Shape">0</token>`;
   } else if (shape === "Cylinder") {
     const d = Math.min(size[2], size[1]);
     finalSize = [size[0], d, d];
-    shapeToken = `<token name="shape">3</token>`;
+    shapeToken = `<token name="Shape">2</token>`;
   }
 
   const [rx, ry, rz] = rotation;
@@ -231,13 +247,17 @@ function buildTerrain() {
     }));
   }
 
-  // кольцевая дорога
-  parts.push(partXml({
-    name: "RingRoad", size: [0.6, (BASE_RING + 26) * 2, (BASE_RING + 26) * 2],
-    position: [0, 0.2, 0], color: PALETTE.SandDark,
-    material: MATERIAL.Sand, shape: "Cylinder",
-    rotation: [0, 0, Math.PI / 2],
-  }));
+  // кольцевая дорожка из сегментов (сплошной диск делал карту бежевой)
+  for (let seg = 1; seg <= 48; seg++) {
+    const segAngle = (seg / 48) * Math.PI * 2;
+    const r = BASE_RING + 10;
+    parts.push(partXml({
+      name: "RingRoadSeg", size: [16, 0.35, 4.5],
+      position: [r * Math.cos(segAngle), 0.19, r * Math.sin(segAngle)],
+      rotation: [0, -segAngle + Math.PI / 2, 0],
+      color: PALETTE.SandDark, material: MATERIAL.Cobblestone,
+    }));
+  }
 
   // площадь рынка
   parts.push(partXml({
@@ -255,55 +275,90 @@ function buildTerrain() {
     const length = to - from;
     const middle = (from + to) / 2;
     parts.push(partXml({
-      name: "Path", size: [9, 0.35, length],
+      name: "Path", size: [6, 0.35, length],
       position: [Math.cos(angle) * middle, 0.28, Math.sin(angle) * middle],
       rotation: [0, -angle + Math.PI / 2, 0],
-      color: PALETTE.Dirt, material: MATERIAL.Ground,
+      color: PALETTE.SandDark, material: MATERIAL.Cobblestone,
     }));
   }
 
-  // горы
-  for (let i = 0; i < 26; i++) {
-    const angle = (i / 26) * Math.PI * 2 + rand() * 0.15;
-    const distance = half - rand() * 26 - 8;
-    const h = randRange(34, 90);
-    const w = randRange(26, 52);
+  // горы — за кольцом баз, у самой стены
+  const mountainRadius = half + 42;
+  for (let i = 0; i < 22; i++) {
+    const angle = (i / 22) * Math.PI * 2 + rand() * 0.1;
+    const distance = mountainRadius + rand() * 22;
+    const h = randRange(26, 46);
+    const w = randRange(24, 40);
+
     parts.push(partXml({
       name: "Mountain", size: [h, w, w],
-      position: [Math.cos(angle) * distance, h / 2 - 3, Math.sin(angle) * distance],
+      position: [Math.cos(angle) * distance, h / 2 - 4, Math.sin(angle) * distance],
       rotation: [0, rand() * Math.PI, Math.PI / 2],
-      color: mixColor(PALETTE.Rock, PALETTE.StoneDark, rand()),
+      color: mixColor(PALETTE.Rock, PALETTE.LeafDark, 0.35 + rand() * 0.4),
       material: MATERIAL.Rock, shape: "Cylinder", canCollide: true,
     }));
+
     parts.push(partXml({
-      name: "Peak", size: [w * 0.55, w * 0.55, w * 0.55],
-      position: [Math.cos(angle) * distance, h - 6, Math.sin(angle) * distance],
+      name: "MountainMid", size: [h * 0.55, w * 0.62, w * 0.62],
+      position: [Math.cos(angle) * distance, h * 0.72, Math.sin(angle) * distance],
+      rotation: [0, rand() * Math.PI, Math.PI / 2],
+      color: mixColor(PALETTE.Stone, PALETTE.LeafMid, 0.3 + rand() * 0.4),
+      material: MATERIAL.Rock, shape: "Cylinder", canCollide: true,
+    }));
+
+    parts.push(partXml({
+      name: "Peak", size: [w * 0.26, w * 0.26, w * 0.26],
+      position: [Math.cos(angle) * distance, h * 0.96 + 2, Math.sin(angle) * distance],
       color: PALETTE.White, material: MATERIAL.Snow, shape: "Ball",
     }));
   }
 
-  // стены
-  const wh = 26, wt = 8;
-  parts.push(partXml({
-    name: "WallN", size: [ARENA + wt * 2, wh, wt],
-    position: [0, wh / 2 - 1, -half - wt / 2],
-    color: PALETTE.StoneDark, material: MATERIAL.Rock, canCollide: true,
-  }));
-  parts.push(partXml({
-    name: "WallS", size: [ARENA + wt * 2, wh, wt],
-    position: [0, wh / 2 - 1, half + wt / 2],
-    color: PALETTE.StoneDark, material: MATERIAL.Rock, canCollide: true,
-  }));
-  parts.push(partXml({
-    name: "WallW", size: [wt, wh, ARENA],
-    position: [-half - wt / 2, wh / 2 - 1, 0],
-    color: PALETTE.StoneDark, material: MATERIAL.Rock, canCollide: true,
-  }));
-  parts.push(partXml({
-    name: "WallE", size: [wt, wh, ARENA],
-    position: [half + wt / 2, wh / 2 - 1, 0],
-    color: PALETTE.StoneDark, material: MATERIAL.Rock, canCollide: true,
-  }));
+  // живая граница — густой лес по краю вместо бетонной стены
+  for (let i = 0; i < 96; i++) {
+    const perimeter = (i / 96) * Math.PI * 2;
+    const dist = half - 6 - rand() * 10;
+    let bx = Math.cos(perimeter) * dist * 1.28;
+    let bz = Math.sin(perimeter) * dist * 1.28;
+    const edge = half - 8;
+    bx = Math.max(-edge, Math.min(edge, bx));
+    bz = Math.max(-edge, Math.min(edge, bz));
+
+    const trunkHeight = 14 + rand() * 12;
+
+    parts.push(partXml({
+      name: "BorderTrunk",
+      size: [3, trunkHeight, 3],
+      position: [bx, trunkHeight / 2 - 1, bz],
+      color: PALETTE.WoodDark, material: MATERIAL.Wood, canCollide: true,
+    }));
+
+    const crownSize = 16 + rand() * 14;
+    const crownColors = [PALETTE.LeafDark, PALETTE.LeafMid, PALETTE.LeafLight, PALETTE.LeafAutumn];
+    parts.push(partXml({
+      name: "BorderCanopy",
+      size: [crownSize, crownSize, crownSize],
+      position: [bx, trunkHeight + crownSize * 0.28 - 1, bz],
+      color: crownColors[i % 4],
+      material: MATERIAL.Grass, shape: "Ball",
+    }));
+  }
+
+  // невидимые барьеры
+  const bt = 10;
+  const barriers = [
+    [[0, 30, -half - bt / 2], [half * 2 + 80, 60, bt]],
+    [[0, 30, half + bt / 2], [half * 2 + 80, 60, bt]],
+    [[-half - bt / 2, 30, 0], [bt, 60, half * 2 + 80]],
+    [[half + bt / 2, 30, 0], [bt, 60, half * 2 + 80]],
+  ];
+  for (let i = 0; i < barriers.length; i++) {
+    const [pos, sz] = barriers[i];
+    parts.push(partXml({
+      name: "Barrier" + (i + 1), size: sz, position: pos,
+      color: PALETTE.StoneDark, material: MATERIAL.Rock,
+      transparency: 1, canCollide: true,
+    }));
+  }
 
   return folderXml("Terrain", parts);
 }
@@ -330,7 +385,10 @@ function buildMarket() {
   }));
 
   // шатры
-  const tentColors = [PALETTE.RoofRed, PALETTE.RoofOrange, PALETTE.RoofBlue];
+  const tentColors = [
+    PALETTE.RoofRed, PALETTE.RoofOrange, PALETTE.RoofBlue,
+    PALETTE.RoofTeal, PALETTE.RoofPurple, PALETTE.RoofPink,
+  ];
   for (let i = 1; i <= 8; i++) {
     const angle = ((i - 1) / 8) * Math.PI * 2 + Math.PI / 8;
     const px = Math.cos(angle) * (MARKET_R - 4);
@@ -357,7 +415,7 @@ function buildMarket() {
 
     parts.push(partXml({
       name: "Canopy", size: [16, 1.1, 16], position: [px, 12.6, pz],
-      rotation: [0, rotY, 0], color: tentColors[(i - 1) % 3],
+      rotation: [0, rotY, 0], color: tentColors[(i - 1) % tentColors.length],
       material: MATERIAL.Fabric, canCollide: true,
     }));
     parts.push(partXml({
@@ -403,24 +461,36 @@ function buildMarket() {
 function buildBases() {
   const bases = [];
 
+  // Каждая база получает свой цвет — сразу видно, где чья территория
+  const baseColors = [
+    [255, 196, 120], // персиковый
+    [150, 214, 255], // небесный
+    [196, 232, 140], // салатовый
+    [255, 168, 200], // розовый
+    [198, 168, 255], // сиреневый
+    [140, 236, 220], // мятный
+    [255, 222, 128], // медовый
+    [176, 216, 255], // голубой
+  ];
+
   for (let i = 1; i <= BASES; i++) {
     const angle = ((i - 1) / BASES) * Math.PI * 2;
     const cx = Math.cos(angle) * BASE_RING;
     const cz = Math.sin(angle) * BASE_RING;
     const parts = [];
 
-    // площадка
+    // площадка — своего цвета у каждой базы
     parts.push(partXml({
       name: "Platform", size: [1.2, (BASE_ZONE + 2) * 2, (BASE_ZONE + 2) * 2],
-      position: [cx, 0.6, cz], color: PALETTE.Sand,
+      position: [cx, 0.6, cz], color: baseColors[(i - 1) % baseColors.length],
       material: MATERIAL.Sand, shape: "Cylinder", canCollide: true,
       rotation: [0, 0, Math.PI / 2],
     }));
 
-    // окантовка
+    // светящаяся окантовка в тон базы
     parts.push(partXml({
       name: "Glow", size: [0.25, (BASE_ZONE + 3.4) * 2, (BASE_ZONE + 3.4) * 2],
-      position: [cx, 0.8, cz], color: [180, 190, 200],
+      position: [cx, 0.8, cz], color: baseColors[(i - 1) % baseColors.length],
       material: MATERIAL.Neon, shape: "Cylinder",
       rotation: [0, 0, Math.PI / 2],
     }));
@@ -501,7 +571,13 @@ function buildBases() {
 function buildNature() {
   const parts = [];
   const half = ARENA / 2;
-  const leafColors = [PALETTE.LeafA, PALETTE.LeafB, PALETTE.LeafC];
+  // 70% обычная зелень, 20% осенние, 10% розовые (сакура)
+  function pickLeaf() {
+    const r = rand();
+    if (r < 0.7) return [PALETTE.LeafA, PALETTE.LeafB, PALETTE.LeafC][randInt(0, 2)];
+    if (r < 0.9) return PALETTE.LeafAutumn;
+    return PALETTE.LeafPink;
+  }
 
   // деревья
   for (let i = 0; i < 50; i++) {
@@ -530,7 +606,7 @@ function buildNature() {
           trunkH + (layer - 1) * 2.8 * scale - 1.6 * scale,
           pz + (rand() - 0.5) * 2.6 * scale,
         ],
-        color: leafColors[randInt(0, 2)],
+        color: pickLeaf(),
         material: MATERIAL.Grass, shape: "Ball",
       }));
     }
@@ -579,6 +655,40 @@ function buildNature() {
     }));
   }
 
+  // ===================== ЦВЕТОЧНЫЕ КЛУМБЫ =====================
+  // Яркие пятна вокруг рынка — сильно оживляют картинку
+  const bedColors = [
+    [255, 120, 150], [255, 210, 90], [190, 140, 255],
+    [110, 200, 255], [255, 160, 90], [140, 240, 180],
+  ];
+
+  for (let bed = 0; bed < 14; bed++) {
+    const bedAngle = (bed / 14) * Math.PI * 2 + 0.22;
+    const bedDist = MARKET_R + 16 + rand() * 8;
+    const bx = Math.cos(bedAngle) * bedDist;
+    const bz = Math.sin(bedAngle) * bedDist;
+    const bedColor = bedColors[bed % bedColors.length];
+
+    // земляная основа клумбы
+    parts.push(partXml({
+      name: "FlowerBedSoil", size: [0.4, 9, 9],
+      position: [bx, 0.42, bz], rotation: [0, 0, Math.PI / 2],
+      color: PALETTE.DirtDark, material: MATERIAL.Ground, shape: "Cylinder",
+    }));
+
+    // цветы
+    for (let flower = 0; flower < 7; flower++) {
+      const fa = rand() * Math.PI * 2;
+      const fd = rand() * 3.6;
+      parts.push(partXml({
+        name: "BedFlower", size: [0.9, 0.9, 0.9],
+        position: [bx + Math.cos(fa) * fd, 1.15, bz + Math.sin(fa) * fd],
+        color: mixColor(bedColor, PALETTE.White, rand() * 0.35),
+        material: MATERIAL.Grass, shape: "Ball",
+      }));
+    }
+  }
+
   // пруд
   const pondX = -BASE_RING - 8;
   const pondZ = BASE_RING - 30;
@@ -603,7 +713,11 @@ function buildPreview() {
   const bases = buildBases();
   const nature = buildNature();
 
-  return folderXml("EggGamePreview", [terrain, market, bases, nature]);
+  // Магазин стоит на входе с рынка, лицом к центру
+  const { buildShop } = require("./build-shop.js");
+  const shop = buildShop({ x: 0, y: 0, z: -MARKET_R - 12 }, 0);
+
+  return folderXml("EggGamePreview", [terrain, market, bases, nature, shop]);
 }
 
 module.exports = { buildPreview, PALETTE, MATERIAL, partXml, folderXml, colorInt, escapeXml };

@@ -162,7 +162,9 @@ function partItem(name, size, position, colorInt, material) {
   ]);
 }
 
-const fallbackFloor = partItem("FallbackFloor", [700, 8, 700], [0, -22, 0], 4284045657, 256);
+// FallbackFloor больше НЕ нужен: превью-мир содержит свой пол.
+// Раньше эта плита просвечивала снизу и создавала «второй этаж» из бетона.
+const fallbackFloor = "";
 
 const fallbackSpawn = item("SpawnLocation", "FallbackSpawn", "", [
   `\t\t\t<bool name="Anchored">true</bool>`,
@@ -185,7 +187,7 @@ const fallbackSpawn = item("SpawnLocation", "FallbackSpawn", "", [
 console.log("Генерирую превью мира...");
 const previewXml = buildPreview();
 
-const workspace = item("Workspace", "Workspace", [fallbackFloor, fallbackSpawn].join("\n") + "\n" + previewXml);
+const workspace = item("Workspace", "Workspace", [fallbackFloor, fallbackSpawn].filter(Boolean).join("\n") + "\n" + previewXml);
 
 // ============================================================
 // СБОРКА ФАЙЛА

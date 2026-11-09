@@ -29,6 +29,7 @@ local carriedRemote = remotesFolder:WaitForChild("CarriedUpdate")
 local baseInfoRemote = remotesFolder:WaitForChild("BaseInfo")
 local buyRemote = remotesFolder:WaitForChild("BuyUpgrade")
 local getShopRemote = remotesFolder:WaitForChild("GetShop")
+local openShopRemote = remotesFolder:WaitForChild("OpenShop")
 
 -- ============================================================
 -- ПАЛИТРА И ШРИФТЫ
@@ -669,6 +670,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	elseif input.KeyCode == Enum.KeyCode.Escape and isShopOpen then
 		closeShop()
+	end
+end)
+
+-- Стойка у входа в магазин на карте открывает панель улучшений
+openShopRemote.OnClientEvent:Connect(function()
+	if not isShopOpen then
+		openShop()
 	end
 end)
 

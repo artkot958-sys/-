@@ -301,6 +301,35 @@ failed = not check("Bases", 16) or failed
 failed = not check("Nature", 10) or failed
 
 -- SpawnLocation
+-- МАГАЗИН: должен существовать как здание на карте
+local function assertTrue(label, cond)
+  if cond then
+    print("   ✓ " .. label)
+    return true
+  end
+  print("   ✗ " .. label .. ": ПРОВАЛ")
+  return false
+end
+
+local market0 = root:FindFirstChild("Market")
+local shopModel = market0 and market0:FindFirstChild("ShopBuilding")
+failed = not assertTrue("Магазин построен в мире", shopModel ~= nil) or failed
+
+if shopModel then
+  local shopParts = 0
+  for _, child in ipairs(shopModel:GetChildren()) do
+    if child:IsA("BasePart") then shopParts = shopParts + 1 end
+  end
+  failed = not assertTrue("Части магазина: " .. shopParts, shopParts >= 50) or failed
+  failed = not assertTrue("Вывеска магазина", shopModel:FindFirstChild("ShopSign") ~= nil) or failed
+  failed = not assertTrue("Прилавок-касса", shopModel:FindFirstChild("ShopCounter") ~= nil) or failed
+  failed = not assertTrue("NPC-продавец", shopModel:FindFirstChild("NPC_Torso") ~= nil) or failed
+  failed = not assertTrue("Полки с товаром", shopModel:FindFirstChild("ShelfItem") ~= nil) or failed
+  failed = not assertTrue("Стойка входа (ProximityPrompt)", shopModel:FindFirstChild("ShopTerminal") ~= nil) or failed
+  failed = not assertTrue("Крыша магазина", shopModel:FindFirstChild("RoofSlope") ~= nil) or failed
+  failed = not assertTrue("Витрины из стекла", shopModel:FindFirstChild("WindowGlass") ~= nil) or failed
+end
+
 local market = root:FindFirstChild("Market")
 if market and market:FindFirstChild("PlayerSpawn") then
   print("✓ SpawnLocation есть")
@@ -343,7 +372,7 @@ end
 -- Remote'ы
 local remotes = ReplicatedStorage:FindFirstChild("EggGameRemotes")
 if remotes then
-  local names = { "Notify", "CoinsUpdate", "ShopUpdate", "CarriedUpdate", "BaseInfo", "BuyUpgrade", "GetShop" }
+  local names = { "Notify", "CoinsUpdate", "ShopUpdate", "CarriedUpdate", "BaseInfo", "BuyUpgrade", "GetShop", "OpenShop" }
   local missing = {}
   for idx = 1, #names do
     local remoteName = names[idx]
@@ -352,7 +381,7 @@ if remotes then
     end
   end
   if #missing == 0 then
-    print("✓ Все 7 RemoteEvent/Function созданы")
+    print("✓ Все 8 RemoteEvent/Function созданы")
   else
     print("✗ Нет Remote: " .. table.concat(missing, ", "))
     failed = true

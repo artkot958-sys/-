@@ -37,30 +37,43 @@ local RNG = Random.new()
 -- ============================================================
 
 local PALETTE = {
-	GrassDark = Color3.fromRGB(64, 122, 62),
-	GrassMid = Color3.fromRGB(84, 146, 76),
-	GrassLight = Color3.fromRGB(104, 168, 88),
-	Sand = Color3.fromRGB(206, 184, 132),
-	SandDark = Color3.fromRGB(178, 154, 104),
-	Stone = Color3.fromRGB(126, 128, 134),
-	StoneDark = Color3.fromRGB(92, 94, 102),
-	Rock = Color3.fromRGB(108, 110, 118),
-	Dirt = Color3.fromRGB(128, 100, 72),
-	DirtDark = Color3.fromRGB(100, 78, 56),
-	Wood = Color3.fromRGB(124, 90, 58),
-	WoodDark = Color3.fromRGB(88, 62, 40),
-	WoodLight = Color3.fromRGB(158, 120, 78),
-	RoofRed = Color3.fromRGB(168, 64, 54),
-	RoofOrange = Color3.fromRGB(206, 112, 48),
-	RoofBlue = Color3.fromRGB(62, 104, 158),
-	Canvas = Color3.fromRGB(232, 218, 186),
-	CanvasDark = Color3.fromRGB(198, 178, 142),
-	Gold = Color3.fromRGB(255, 196, 64),
-	LanternGlow = Color3.fromRGB(255, 212, 132),
-	Water = Color3.fromRGB(78, 152, 196),
-	LeafA = Color3.fromRGB(58, 138, 78),
-	LeafB = Color3.fromRGB(96, 180, 108),
-	LeafC = Color3.fromRGB(44, 112, 66),
+	GrassDark = Color3.fromRGB(96, 178, 92),
+	GrassMid = Color3.fromRGB(124, 204, 108),
+	GrassLight = Color3.fromRGB(158, 226, 132),
+	Sand = Color3.fromRGB(246, 224, 168),
+	SandDark = Color3.fromRGB(232, 202, 138),
+	Stone = Color3.fromRGB(186, 190, 200),
+	StoneDark = Color3.fromRGB(148, 152, 166),
+	Rock = Color3.fromRGB(166, 170, 182),
+	Dirt = Color3.fromRGB(188, 148, 106),
+	DirtDark = Color3.fromRGB(156, 118, 80),
+	Wood = Color3.fromRGB(188, 138, 88),
+	WoodDark = Color3.fromRGB(136, 96, 60),
+	WoodLight = Color3.fromRGB(216, 176, 118),
+	RoofRed = Color3.fromRGB(232, 84, 76),
+	RoofOrange = Color3.fromRGB(250, 152, 56),
+	RoofBlue = Color3.fromRGB(70, 148, 232),
+	RoofTeal = Color3.fromRGB(62, 190, 186),
+	RoofPurple = Color3.fromRGB(164, 108, 232),
+	RoofPink = Color3.fromRGB(244, 116, 168),
+	Canvas = Color3.fromRGB(252, 240, 214),
+	CanvasDark = Color3.fromRGB(226, 206, 168),
+	Gold = Color3.fromRGB(255, 208, 72),
+	LanternGlow = Color3.fromRGB(255, 230, 160),
+	Water = Color3.fromRGB(96, 190, 240),
+	LeafA = Color3.fromRGB(88, 186, 106),
+	LeafB = Color3.fromRGB(130, 218, 128),
+	LeafC = Color3.fromRGB(62, 158, 92),
+	LeafDark = Color3.fromRGB(52, 132, 74),
+	LeafMid = Color3.fromRGB(88, 186, 106),
+	LeafLight = Color3.fromRGB(150, 224, 138),
+	LeafAutumn = Color3.fromRGB(246, 168, 68),
+	LeafPink = Color3.fromRGB(250, 156, 190),
+	RoofDark = Color3.fromRGB(42, 104, 112),
+	MyBase = Color3.fromRGB(70, 240, 148),
+	White = Color3.fromRGB(246, 250, 255),
+	Glass = Color3.fromRGB(186, 222, 236),
+	WoodDeep = Color3.fromRGB(104, 72, 46),
 }
 
 -- ============================================================
@@ -262,17 +275,23 @@ local function buildTerrain(folder)
 		}, folder)
 	end
 
-	-- Песчаная дорога-кольцо вокруг баз
-	newDisc({
-		Name = "RingRoad",
-		Radius = Config.BaseRingRadius + 26,
-		Height = 0.6,
-		Position = Vector3.new(0, 0.2, 0),
-		Color = PALETTE.SandDark,
-		Material = Enum.Material.Sand,
-		CanCollide = false,
-		CanQuery = false,
-	}, folder)
+	-- Вместо сплошного песчаного диска — узкая кольцевая дорожка из сегментов.
+	-- Сплошной диск закрывал всю траву и делал карту бежевой.
+	for seg = 1, 48 do
+		local segAngle = (seg / 48) * math.pi * 2
+		local r = Config.BaseRingRadius + 10
+
+		newPart({
+			Name = "RingRoadSeg",
+			Size = Vector3.new(16, 0.35, 4.5),
+			CFrame = CFrame.new(r * math.cos(segAngle), 0.19, r * math.sin(segAngle))
+				* CFrame.Angles(0, -segAngle + math.pi / 2, 0),
+			Color = PALETTE.SandDark,
+			Material = Enum.Material.Cobblestone,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
 
 	-- Каменная площадь под рынком
 	newDisc({
@@ -285,76 +304,143 @@ local function buildTerrain(folder)
 		CanCollide = true,
 	}, folder)
 
+	-- Угол, под которым стоит магазин (на -Z от центра)
+	local SHOP_ANGLE = -math.pi / 2
+	local SHOP_DEPTH = 26
+
 	-- Дорожки от рынка к каждой базе
 	for i = 1, Config.BasesCount do
 		local angle = ((i - 1) / Config.BasesCount) * math.pi * 2
 		local from = Config.MarketRadius + 8
 		local to = Config.BaseRingRadius - Config.BaseZoneRadius - 2
+
+		-- Дорожка, ведущая к магазину, обрывается у его входа,
+		-- а не проходит сквозь здание
+		local toShop = math.abs(((angle - SHOP_ANGLE + math.pi) % (math.pi * 2)) - math.pi) < 0.2
+		if toShop then
+			to = Config.MarketRadius + SHOP_DEPTH / 2 + 4
+		end
+
 		local length = to - from
 		local middle = (from + to) / 2
 
 		local path = newPart({
 			Name = "Path",
-			Size = Vector3.new(9, 0.35, length),
+			Size = Vector3.new(6, 0.35, length),
 			CFrame = CFrame.new(ringPoint(middle, angle, 0.28))
 				* CFrame.Angles(0, -angle + math.pi / 2, 0),
-			Color = PALETTE.Dirt,
-			Material = Enum.Material.Ground,
+			Color = PALETTE.SandDark,
+			Material = Enum.Material.Cobblestone,
 			CanCollide = false,
 			CanQuery = false,
 		}, folder)
 	end
 
 	-- ===================== ГОРЫ ПО КРАЯМ =====================
-	local mountainCount = 26
+	-- Горы стоят ЗА кольцом баз, у самой стены, чтобы не закрывать арену.
+	-- Высота умеренная: это фон, а не главный объект.
+	local mountainCount = 22
+	local mountainRadius = half + 42
+
 	for i = 1, mountainCount do
-		local angle = (i / mountainCount) * math.pi * 2 + RNG:NextNumber() * 0.15
-		local distance = half - RNG:NextNumber() * 26 - 8
+		local angle = (i / mountainCount) * math.pi * 2 + RNG:NextNumber() * 0.1
+		local distance = mountainRadius + RNG:NextNumber() * 22
 		local point = ringPoint(distance, angle, 0)
 
-		local height = 34 + RNG:NextNumber() * 56
-		local width = 26 + RNG:NextNumber() * 26
+		local height = 26 + RNG:NextNumber() * 20
+		local width = 24 + RNG:NextNumber() * 16
 
-		-- Основание горы
+		-- Нижний ярус горы (широкий)
 		shapePart("Cylinder", width, height, {
 			Name = "Mountain",
-			CFrame = CFrame.new(Vector3.new(point.X, height / 2 - 3, point.Z))
+			CFrame = CFrame.new(Vector3.new(point.X, height / 2 - 4, point.Z))
 				* CFrame.Angles(0, RNG:NextNumber() * math.pi, math.rad(90)),
-			Color = PALETTE.Rock:Lerp(PALETTE.StoneDark, RNG:NextNumber()),
+			Color = PALETTE.Rock:Lerp(PALETTE.LeafDark, 0.35 + RNG:NextNumber() * 0.4),
 			Material = Enum.Material.Rock,
 			CanCollide = true,
 		}, folder)
 
-		-- Вершина (снег)
-		shapePart("Ball", width * 0.55, width * 0.55, {
+		-- Средний ярус — придаёт ступенчатый силуэт вместо «столба»
+		shapePart("Cylinder", width * 0.62, height * 0.55, {
+			Name = "MountainMid",
+			CFrame = CFrame.new(Vector3.new(point.X, height * 0.72, point.Z))
+				* CFrame.Angles(0, RNG:NextNumber() * math.pi, math.rad(90)),
+			Color = PALETTE.Stone:Lerp(PALETTE.LeafMid, 0.3 + RNG:NextNumber() * 0.4),
+			Material = Enum.Material.Rock,
+			CanCollide = true,
+		}, folder)
+
+		-- Снежная вершина — маленькая, только «шапка»
+		shapePart("Ball", width * 0.26, width * 0.26, {
 			Name = "Peak",
-			Position = Vector3.new(point.X, height - 6, point.Z),
-			Color = Color3.fromRGB(232, 238, 245),
+			Position = Vector3.new(point.X, height * 0.96 + 2, point.Z),
+			Color = Color3.fromRGB(250, 252, 255),
 			Material = Enum.Material.Snow,
 			CanCollide = false,
 			CanQuery = false,
 		}, folder)
 	end
 
-	-- ===================== СТЕНЫ ПО ПЕРИМЕТРУ =====================
-	-- Невысокие, чтобы не закрывать вид на горы
-	local wallHeight = 26
-	local wallThickness = 8
-	local wallDefs = {
-		{ Vector3.new(0, wallHeight / 2 - 1, -half - wallThickness / 2), Vector3.new(size + wallThickness * 2, wallHeight, wallThickness) },
-		{ Vector3.new(0, wallHeight / 2 - 1, half + wallThickness / 2), Vector3.new(size + wallThickness * 2, wallHeight, wallThickness) },
-		{ Vector3.new(-half - wallThickness / 2, wallHeight / 2 - 1, 0), Vector3.new(wallThickness, wallHeight, size) },
-		{ Vector3.new(half + wallThickness / 2, wallHeight / 2 - 1, 0), Vector3.new(wallThickness, wallHeight, size) },
+	-- ===================== ЖИВАЯ ГРАНИЦА =====================
+	-- Никакой бетонной стены: край арены — густой лес.
+	-- Внутри невидимый барьер не даёт выйти за пределы.
+	local borderThickness = 10
+
+	for i = 1, 96 do
+		local perimeter = (i / 96) * math.pi * 2
+		local dist = half - 6 - RNG:NextNumber() * 10
+		local bx = math.cos(perimeter) * dist * 1.28
+		local bz = math.sin(perimeter) * dist * 1.28
+
+		-- прижимаем к квадратной границе
+		-- без math.clamp: не во всех версиях Luau он есть
+		local edge = half - 8
+		if bx < -edge then bx = -edge elseif bx > edge then bx = edge end
+		if bz < -edge then bz = -edge elseif bz > edge then bz = edge end
+
+		local trunkHeight = 14 + RNG:NextNumber() * 12
+
+		newPart({
+			Name = "BorderTrunk",
+			Size = Vector3.new(3, trunkHeight, 3),
+			Position = Vector3.new(bx, trunkHeight / 2 - 1, bz),
+			Color = PALETTE.WoodDark,
+			Material = Enum.Material.Wood,
+			CanCollide = true,
+		}, folder)
+
+		local crownSize = 16 + RNG:NextNumber() * 14
+		shapePart("Ball", crownSize, crownSize, {
+			Name = "BorderCanopy",
+			Position = Vector3.new(bx, trunkHeight + crownSize * 0.28 - 1, bz),
+			Color = (i % 4 == 0 and PALETTE.LeafDark)
+				or (i % 4 == 1 and PALETTE.LeafMid)
+				or (i % 4 == 2 and PALETTE.LeafLight)
+				or PALETTE.LeafAutumn,
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+	end
+
+	-- Невидимые барьеры по краю (чтобы нельзя было убежать в лес)
+	local barrierDefs = {
+		{ Vector3.new(0, 30, -half - borderThickness / 2), Vector3.new(size + 80, 60, borderThickness) },
+		{ Vector3.new(0, 30, half + borderThickness / 2), Vector3.new(size + 80, 60, borderThickness) },
+		{ Vector3.new(-half - borderThickness / 2, 30, 0), Vector3.new(borderThickness, 60, size + 80) },
+		{ Vector3.new(half + borderThickness / 2, 30, 0), Vector3.new(borderThickness, 60, size + 80) },
 	}
 
-	for index, def in ipairs(wallDefs) do
+	for index, def in ipairs(barrierDefs) do
 		newPart({
-			Name = "BoundaryWall" .. index,
+			Name = "Barrier" .. index,
 			Size = def[2],
 			Position = def[1],
 			Color = PALETTE.StoneDark,
-			Material = Enum.Material.Rock,
+			Transparency = 1,
 			CanCollide = true,
+			CanQuery = false,
+			CastShadow = false,
 		}, folder)
 	end
 end
@@ -440,12 +526,15 @@ local function buildMarket(folder)
 		end
 
 		-- навес
-		local canopyColors = { PALETTE.RoofRed, PALETTE.RoofOrange, PALETTE.RoofBlue }
+		local canopyColors = {
+			PALETTE.RoofRed, PALETTE.RoofOrange, PALETTE.RoofBlue,
+			PALETTE.RoofTeal, PALETTE.RoofPurple, PALETTE.RoofPink,
+		}
 		newPart({
 			Name = "Canopy",
 			Size = Vector3.new(16, 1.1, 16),
 			CFrame = CFrame.new(point + Vector3.new(0, 12.6, 0)) * CFrame.Angles(0, -angle, 0),
-			Color = canopyColors[(i % 3) + 1],
+			Color = canopyColors[(i % #canopyColors) + 1],
 			Material = Enum.Material.Fabric,
 			CanCollide = true,
 		}, tent)
@@ -627,13 +716,26 @@ local function buildBases(folder)
 
 		local zoneR = Config.BaseZoneRadius
 
+		-- Цвет базы — сразу видно, где чья территория
+		local BASE_COLORS = {
+			Color3.fromRGB(255, 196, 120),
+			Color3.fromRGB(150, 214, 255),
+			Color3.fromRGB(196, 232, 140),
+			Color3.fromRGB(255, 168, 200),
+			Color3.fromRGB(198, 168, 255),
+			Color3.fromRGB(140, 236, 220),
+			Color3.fromRGB(255, 222, 128),
+			Color3.fromRGB(176, 216, 255),
+		}
+		local baseColor = BASE_COLORS[((index - 1) % #BASE_COLORS) + 1]
+
 		-- ===================== ПЛОЩАДКА =====================
 		local platform = newDisc({
 			Name = "Platform",
 			Radius = zoneR + 2,
 			Height = 1.2,
 			Position = center + Vector3.new(0, 0.6, 0),
-			Color = PALETTE.Sand,
+			Color = baseColor,
 			Material = Enum.Material.Sand,
 			CanCollide = true,
 		}, model)
@@ -644,7 +746,7 @@ local function buildBases(folder)
 			Radius = zoneR + 3.4,
 			Height = 0.25,
 			Position = center + Vector3.new(0, 0.8, 0),
-			Color = Color3.fromRGB(180, 190, 200),
+			Color = baseColor,
 			Material = Enum.Material.Neon,
 			CanCollide = false,
 			CanQuery = false,
@@ -898,6 +1000,17 @@ local function buildTree(folder, position, scale)
 	-- крона из 3 шаров
 	local leafColors = { PALETTE.LeafA, PALETTE.LeafB, PALETTE.LeafC }
 
+	-- 70% зелень, 20% осенние, 10% сакура — лес перестаёт быть одноцветным
+	local function pickLeaf()
+		local roll = RNG:NextNumber()
+		if roll < 0.7 then
+			return leafColors[RNG:NextInteger(1, 3)]
+		elseif roll < 0.9 then
+			return PALETTE.LeafAutumn
+		end
+		return PALETTE.LeafPink
+	end
+
 	for layer = 1, 3 do
 		local layerSize = (10 - layer * 2.2 + RNG:NextNumber() * 1.6) * scale
 
@@ -908,7 +1021,7 @@ local function buildTree(folder, position, scale)
 				trunkHeight + (layer - 1) * 2.8 * scale - 1.6 * scale,
 				(RNG:NextNumber() - 0.5) * 2.6 * scale
 			),
-			Color = leafColors[RNG:NextInteger(1, 3)],
+			Color = pickLeaf(),
 			Material = Enum.Material.Grass,
 			CanCollide = false,
 			CanQuery = false,
@@ -1002,6 +1115,50 @@ local function buildNature(folder)
 		}, folder)
 	end
 
+	-- ===================== ЦВЕТОЧНЫЕ КЛУМБЫ =====================
+	-- Яркие пятна вокруг рынка — сильно оживляют картинку
+	local bedColors = {
+		Color3.fromRGB(255, 120, 150),
+		Color3.fromRGB(255, 210, 90),
+		Color3.fromRGB(190, 140, 255),
+		Color3.fromRGB(110, 200, 255),
+		Color3.fromRGB(255, 160, 90),
+		Color3.fromRGB(140, 240, 180),
+	}
+
+	for bed = 1, 14 do
+		local bedAngle = (bed / 14) * math.pi * 2 + 0.22
+		local bedDist = Config.MarketRadius + 16 + RNG:NextNumber() * 8
+		local bx = math.cos(bedAngle) * bedDist
+		local bz = math.sin(bedAngle) * bedDist
+		local bedColor = bedColors[(bed - 1) % #bedColors + 1]
+
+		newDisc({
+			Name = "FlowerBedSoil",
+			Radius = 4.5,
+			Height = 0.4,
+			Position = Vector3.new(bx, 0.42, bz),
+			Color = PALETTE.DirtDark,
+			Material = Enum.Material.Ground,
+			CanCollide = false,
+			CanQuery = false,
+		}, folder)
+
+		for flower = 1, 7 do
+			local fa = RNG:NextNumber() * math.pi * 2
+			local fd = RNG:NextNumber() * 3.6
+
+			shapePart("Ball", 0.9, 0.9, {
+				Name = "BedFlower",
+				Position = Vector3.new(bx + math.cos(fa) * fd, 1.15, bz + math.sin(fa) * fd),
+				Color = bedColor:Lerp(PALETTE.White, RNG:NextNumber() * 0.35),
+				Material = Enum.Material.Grass,
+				CanCollide = false,
+				CanQuery = false,
+			}, folder)
+		end
+	end
+
 	-- ===================== ПРУД =====================
 	local pondPos = Vector3.new(-Config.BaseRingRadius - 8, 0, Config.BaseRingRadius - 30)
 
@@ -1087,9 +1244,10 @@ local function setupLighting()
 		colorCorrection = Instance.new("ColorCorrectionEffect")
 		colorCorrection.Parent = Lighting
 	end
-	colorCorrection.Brightness = 0.02
-	colorCorrection.Contrast = 0.12
-	colorCorrection.Saturation = 0.14
+	-- Больше насыщенности: краски должны быть сочными, а не пастельными
+	colorCorrection.Brightness = 0.04
+	colorCorrection.Contrast = 0.16
+	colorCorrection.Saturation = 0.34
 	colorCorrection.TintColor = Color3.fromRGB(255, 250, 244)
 
 	local sunRays = Lighting:FindFirstChildOfClass("SunRaysEffect")
@@ -1163,6 +1321,325 @@ local function buildLeaderboard(folder, position, facing)
 	return list
 end
 
+
+-- ============================================================
+-- МАГАЗИН УЛУЧШЕНИЙ
+-- ============================================================
+
+-- Строит здание магазина. Та же геометрия, что в статичном превью,
+-- плюс интерактивная стойка входа.
+local function buildShopBuilding(folder, origin, facing)
+	local ox, oy, oz = origin.X, origin.Y, origin.Z
+	local cos, sin = math.cos(facing), math.sin(facing)
+
+	local W, D, H = 34, 26, 16
+
+	local model = Instance.new("Model")
+	model.Name = "ShopBuilding"
+	model.Parent = folder
+
+	-- локальные координаты -> мировые
+	local function at(lx, ly, lz)
+		return Vector3.new(ox + lx * cos + lz * sin, oy + ly, oz - lx * sin + lz * cos)
+	end
+
+	local function add(props)
+		props.CFrame = CFrame.new(at(props.LX, props.LY, props.LZ)) * CFrame.Angles(0, facing, 0)
+		props.LX, props.LY, props.LZ = nil, nil, nil
+		return newPart(props, model)
+	end
+
+	-- ===================== ФУНДАМЕНТ =====================
+	add({
+		Name = "ShopFloor", LX = 0, LY = 0.8, LZ = 0,
+		Size = Vector3.new(W + 4, 1.6, D + 4),
+		Color = PALETTE.Stone, Material = Enum.Material.Concrete, CanCollide = true,
+	})
+
+	add({
+		Name = "ShopYard", LX = 0, LY = 0.18, LZ = D / 2 + 12,
+		Size = Vector3.new(46, 0.35, 30),
+		Color = PALETTE.Stone, Material = Enum.Material.Cobblestone,
+	})
+
+	add({
+		Name = "ShopPath", LX = 0, LY = 0.2, LZ = D / 2 + 40,
+		Size = Vector3.new(10, 0.4, 34),
+		Color = PALETTE.SandDark, Material = Enum.Material.Cobblestone,
+	})
+
+	-- ===================== СТЕНЫ =====================
+	local wt = 1.2
+
+	add({
+		Name = "WallBack", LX = 0, LY = H / 2 + 1.6, LZ = -D / 2,
+		Size = Vector3.new(W, H, wt),
+		Color = PALETTE.Canvas, Material = Enum.Material.Concrete, CanCollide = true,
+	})
+
+	for _, side in ipairs({ -1, 1 }) do
+		add({
+			Name = "WallSide", LX = side * W / 2, LY = H / 2 + 1.6, LZ = 0,
+			Size = Vector3.new(wt, H, D),
+			Color = PALETTE.Canvas, Material = Enum.Material.Concrete, CanCollide = true,
+		})
+
+		add({
+			Name = "FacadeColumn", LX = side * (W / 2 - 2.5), LY = H / 2 + 1.6, LZ = D / 2,
+			Size = Vector3.new(5, H, wt),
+			Color = PALETTE.Canvas, Material = Enum.Material.Concrete, CanCollide = true,
+		})
+	end
+
+	add({
+		Name = "FacadeLintel", LX = 0, LY = H - 0.4, LZ = D / 2,
+		Size = Vector3.new(W, 4, wt),
+		Color = PALETTE.Canvas, Material = Enum.Material.Concrete, CanCollide = true,
+	})
+
+	-- деревянный пояс
+	add({
+		Name = "WallTrim", LX = 0, LY = 6, LZ = -D / 2,
+		Size = Vector3.new(W + 0.6, 1.2, wt + 0.5),
+		Color = PALETTE.WoodLight, Material = Enum.Material.WoodPlanks,
+	})
+
+	-- ===================== КРЫША =====================
+	local roofAngle = math.atan2(7, D / 2)
+	local roofLen = math.sqrt((D / 2) ^ 2 + 7 ^ 2)
+
+	for _, side in ipairs({ -1, 1 }) do
+		local slope = newPart({
+			Name = "RoofSlope",
+			Size = Vector3.new(W + 5, 1.2, roofLen + 2),
+			CFrame = CFrame.new(at(0, H + 5.5, side * D / 4)) * CFrame.Angles(side * roofAngle, facing, 0),
+			Color = PALETTE.RoofTeal,
+			Material = Enum.Material.Fabric,
+			CanCollide = true,
+		}, model)
+	end
+
+	add({
+		Name = "RoofRidge", LX = 0, LY = H + 9.2, LZ = 0,
+		Size = Vector3.new(W + 6, 1.6, 2.4),
+		Color = PALETTE.RoofDark, Material = Enum.Material.Wood,
+	})
+
+	-- ===================== ВИТРИНЫ =====================
+	for _, side in ipairs({ -1, 1 }) do
+		add({
+			Name = "WindowFrame", LX = side * 10, LY = 9, LZ = D / 2 - 0.3,
+			Size = Vector3.new(8.6, 8.6, 0.3),
+			Color = PALETTE.WoodDark, Material = Enum.Material.WoodPlanks,
+		})
+		add({
+			Name = "WindowGlass", LX = side * 10, LY = 9, LZ = D / 2,
+			Size = Vector3.new(8, 8, 0.4),
+			Color = PALETTE.Glass, Material = Enum.Material.Glass, Transparency = 0.55,
+		})
+	end
+
+	-- ===================== ВЫВЕСКА =====================
+	local sign = newPart({
+		Name = "ShopSign",
+		Size = Vector3.new(26, 6, 0.8),
+		CFrame = CFrame.new(at(0, H + 2.5, D / 2 + 0.9), Vector3.new(0, H + 2.5, 0)),
+		Color = PALETTE.WoodDark,
+		Material = Enum.Material.WoodPlanks,
+	}, model)
+
+	local _, signLabel = makeBillboard(
+		sign, "🛒 МАГАЗИН УЛУЧШЕНИЙ", PALETTE.Gold,
+		UDim2.fromOffset(520, 96), Vector3.new(0, 0, 0.9)
+	)
+
+	-- ===================== ПРИЛАВОК =====================
+	add({
+		Name = "ShopCounter", LX = 0, LY = 3.6, LZ = -2,
+		Size = Vector3.new(16, 4, 3.2),
+		Color = PALETTE.Wood, Material = Enum.Material.WoodPlanks, CanCollide = true,
+	})
+
+	add({
+		Name = "CounterTop", LX = 0, LY = 5.9, LZ = -2,
+		Size = Vector3.new(17, 0.7, 4),
+		Color = PALETTE.WoodLight, Material = Enum.Material.WoodPlanks, CanCollide = true,
+	})
+
+	add({
+		Name = "Register", LX = 4.5, LY = 7.5, LZ = -2,
+		Size = Vector3.new(3, 2.4, 2.4),
+		Color = PALETTE.Gold, Material = Enum.Material.Neon,
+	})
+
+	-- ===================== ПОЛКИ =====================
+	local shelfColors = {
+		Color3.fromRGB(70, 148, 232),
+		Color3.fromRGB(250, 152, 56),
+		Color3.fromRGB(164, 108, 232),
+		Color3.fromRGB(232, 84, 76),
+		Color3.fromRGB(96, 200, 120),
+		Color3.fromRGB(255, 208, 72),
+	}
+
+	local shelfNames = {
+		"Полка: Рюкзак", "Полка: Скорость", "Полка: Магнит",
+		"Полка: Ловкость", "Полка: Склад", "Полка: Доход",
+	}
+
+	for index = 0, 5 do
+		local side = (index < 3) and -1 or 1
+		local slot = index % 3
+		local lz = -D / 2 + 5 + slot * 6
+		local color = shelfColors[index + 1]
+
+		add({
+			Name = shelfNames[index + 1], LX = side * 12.5, LY = 4.5, LZ = lz,
+			Size = Vector3.new(6, 1.2, 5),
+			Color = PALETTE.WoodDark, Material = Enum.Material.WoodPlanks, CanCollide = true,
+		})
+
+		add({
+			Name = "ShelfItem", LX = side * 12.5, LY = 6.4, LZ = lz,
+			Size = Vector3.new(2.4, 2.4, 2.4),
+			Color = color, Material = Enum.Material.SmoothPlastic,
+			CFrame = CFrame.new(at(side * 12.5, 6.4, lz)) * CFrame.Angles(0.4, facing, 0.3),
+		})
+
+		add({
+			Name = "ShelfGlow", LX = side * 12.5, LY = 5.2, LZ = lz,
+			Size = Vector3.new(6.6, 0.3, 5.6),
+			Color = color, Material = Enum.Material.Neon, Transparency = 0.2,
+		})
+	end
+
+	-- ===================== NPC-ПРОДАВЕЦ =====================
+	local npcX, npcZ = -4, -4
+
+	add({
+		Name = "NPC_Torso", LX = npcX, LY = 6.5, LZ = npcZ,
+		Size = Vector3.new(4, 5, 2.2),
+		Color = Color3.fromRGB(66, 118, 176), Material = Enum.Material.SmoothPlastic, CanCollide = true,
+	})
+
+	add({
+		Name = "NPC_Head", LX = npcX, LY = 10.4, LZ = npcZ,
+		Size = Vector3.new(2.6, 2.6, 2.6),
+		Color = Color3.fromRGB(232, 190, 154), Material = Enum.Material.SmoothPlastic,
+	})
+
+	add({
+		Name = "NPC_Hair", LX = npcX, LY = 11.5, LZ = npcZ,
+		Size = Vector3.new(2.9, 1.1, 2.9),
+		Color = Color3.fromRGB(68, 48, 36), Material = Enum.Material.SmoothPlastic,
+	})
+
+	for _, side in ipairs({ -1, 1 }) do
+		add({
+			Name = "NPC_Arm", LX = npcX + side * 2.7, LY = 6.6, LZ = npcZ,
+			Size = Vector3.new(1.2, 4.4, 1.2),
+			Color = Color3.fromRGB(66, 118, 176), Material = Enum.Material.SmoothPlastic,
+		})
+		add({
+			Name = "NPC_Leg", LX = npcX + side * 1, LY = 2.2, LZ = npcZ,
+			Size = Vector3.new(1.6, 4, 1.6),
+			Color = Color3.fromRGB(62, 68, 88), Material = Enum.Material.SmoothPlastic,
+		})
+	end
+
+	-- ===================== ФОНАРИ И ЦВЕТЫ =====================
+	for _, side in ipairs({ -1, 1 }) do
+		add({
+			Name = "ShopLanternPost", LX = side * (W / 2 + 3), LY = 7, LZ = D / 2 + 4,
+			Size = Vector3.new(0.7, 11, 0.7),
+			Color = PALETTE.WoodDark, Material = Enum.Material.Wood, CanCollide = true,
+		})
+
+		local bulb = newPart({
+			Name = "ShopLantern",
+			Size = Vector3.new(1.8, 1.8, 1.8),
+			CFrame = CFrame.new(at(side * (W / 2 + 3), 12.6, D / 2 + 4)),
+			Color = PALETTE.Gold,
+			Material = Enum.Material.Neon,
+		}, model)
+		bulb.Shape = Enum.PartType.Ball
+
+		local light = Instance.new("PointLight")
+		light.Color = PALETTE.Gold
+		light.Range = 30
+		light.Brightness = 1.8
+		light.Parent = bulb
+
+		table.insert(Map.AnimatedLanterns, bulb)
+
+		-- клумба у входа
+		add({
+			Name = "Planter", LX = side * (W / 2 - 1), LY = 2.4, LZ = D / 2 + 2.5,
+			Size = Vector3.new(4, 2, 2.4),
+			Color = PALETTE.WoodDark, Material = Enum.Material.WoodPlanks, CanCollide = true,
+		})
+
+		for f = 0, 2 do
+			local flowerColors = {
+				Color3.fromRGB(232, 84, 76),
+				Color3.fromRGB(255, 208, 72),
+				Color3.fromRGB(164, 108, 232),
+			}
+			local flower = newPart({
+				Name = "PlanterFlower",
+				Size = Vector3.new(0.9, 0.9, 0.9),
+				CFrame = CFrame.new(at(side * (W / 2 - 1) + (f - 1) * 1.2, 3.9, D / 2 + 2.5)),
+				Color = flowerColors[f + 1],
+				Material = Enum.Material.Grass,
+			}, model)
+			flower.Shape = Enum.PartType.Ball
+		end
+	end
+
+	-- ===================== СТОЙКА ВХОДА =====================
+	-- Интерактивная колонна: зажал E -> открылся магазин улучшений
+	local terminalPos = at(0, 2.2, D / 2 + 7)
+
+	local terminal = newPart({
+		Name = "ShopTerminal",
+		Size = Vector3.new(4.5, 0.7, 4.5),
+		CFrame = CFrame.new(terminalPos),
+		Color = PALETTE.Gold,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+	}, model)
+	terminal.Shape = Enum.PartType.Cylinder
+	terminal.CFrame = CFrame.new(terminalPos) * CFrame.Angles(0, 0, math.rad(90))
+
+	local terminalGui = Instance.new("BillboardGui")
+	terminalGui.Size = UDim2.fromOffset(220, 54)
+	terminalGui.StudsOffset = Vector3.new(0, 3.4, 0)
+	terminalGui.AlwaysOnTop = true
+	terminalGui.MaxDistance = 220
+	terminalGui.Adornee = terminal
+	terminalGui.Parent = terminal
+
+	local terminalLabel = Instance.new("TextLabel")
+	terminalLabel.Size = UDim2.fromScale(1, 1)
+	terminalLabel.BackgroundTransparency = 1
+	terminalLabel.Font = Enum.Font.GothamBlack
+	terminalLabel.Text = "🛒 МАГАЗИН"
+	terminalLabel.TextScaled = true
+	terminalLabel.TextColor3 = PALETTE.Gold
+	terminalLabel.TextStrokeTransparency = 0.2
+	terminalLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	terminalLabel.Parent = terminalGui
+
+	local terminalPrompt = makePrompt(terminal, "Открыть магазин", "Улучшения", 14, 0)
+
+	return {
+		Model = model,
+		SignLabel = signLabel,
+		Terminal = terminal,
+		Prompt = terminalPrompt,
+	}
+end
+
 -- ============================================================
 -- ГЛАВНАЯ СБОРКА
 -- ============================================================
@@ -1214,6 +1691,13 @@ function Map.build()
 
 	buildNature(natureFolder)
 
+	-- Магазин на входе с рынка, лицом к центру
+	local shopData = buildShopBuilding(
+		marketFolder,
+		Vector3.new(0, 0, -Config.MarketRadius - 12),
+		0
+	)
+
 	-- Табло ставим сбоку от рынка, лицом к спавну
 	local boardPos = Vector3.new(-Config.MarketRadius - 14, 0, 4)
 	local leaderboardList = buildLeaderboard(
@@ -1234,6 +1718,7 @@ function Map.build()
 		BasesData = bases,
 		MarketCenter = Vector3.new(0, 0, 0),
 		LeaderboardList = leaderboardList,
+		Shop = shopData,
 	}
 end
 

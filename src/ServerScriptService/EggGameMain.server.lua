@@ -99,6 +99,7 @@ local remotes = {
 	BaseInfo = ensureRemote("RemoteEvent", "BaseInfo"),
 	BuyUpgrade = ensureRemote("RemoteFunction", "BuyUpgrade"),
 	GetShop = ensureRemote("RemoteFunction", "GetShop"),
+	OpenShop = ensureRemote("RemoteEvent", "OpenShop"),
 }
 
 -- ============================================================
@@ -109,6 +110,13 @@ Core.init(mapData, remotes)
 
 -- Оживляем мир: вращение статуи, мерцание костров, гирлянды
 Map.startAnimations()
+
+-- Стойка у входа в магазин открывает интерфейс улучшений
+if mapData.Shop and mapData.Shop.Prompt then
+	mapData.Shop.Prompt.Triggered:Connect(function(player)
+		remotes.OpenShop:FireClient(player)
+	end)
+end
 
 -- ============================================================
 -- 4. МАГАЗИН
